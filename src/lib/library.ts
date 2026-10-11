@@ -44,6 +44,19 @@ export function trimCanvas(c: HTMLCanvasElement, margin = 8): HTMLCanvasElement 
 
 export type CleanMode = 'white' | 'red' | 'none';
 
+/** 배경이 이미 투명한 그림인지 (투명하거나 반투명한 부분이 2% 넘게 있으면) */
+export function hasTransparency(img: HTMLImageElement): boolean {
+  const s = Math.min(1, 256 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * s)); c.height = Math.max(1, Math.round(img.naturalHeight * s));
+  const x = c.getContext('2d')!;
+  x.drawImage(img, 0, 0, c.width, c.height);
+  const a = x.getImageData(0, 0, c.width, c.height).data;
+  let t = 0;
+  for (let i = 3; i < a.length; i += 4) if (a[i] < 200) t++;
+  return t / (a.length / 4) > 0.02;
+}
+
 /** 사진에서 배경 지우기: 흰 배경을 투명하게, 또는 빨간 인주만 남기기 */
 export function cleanImage(img: HTMLImageElement, mode: CleanMode, maxSide = 1400): HTMLCanvasElement {
   const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));

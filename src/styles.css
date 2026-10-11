@@ -337,7 +337,8 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .photo .checker{height:220px;display:grid;place-items:center;padding:14px}
 .photo .checker img{max-width:100%;max-height:100%}
 .photodrop{height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1.5px dashed #C5D9D6;border-radius:var(--r-md);background:var(--ground);color:var(--navy)}
-.photodrop:hover{border-color:var(--teal);background:#fff}
+.photodrop:hover,.photodrop.over{border-color:var(--teal);background:#fff}
+.photodrop small{max-width:420px;text-align:center;line-height:1.5}
 .photodrop b{font-size:15px;color:var(--ink)}
 .photodrop small{font-size:12.5px;color:var(--muted)}
 .photoopts{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}

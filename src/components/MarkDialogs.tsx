@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { cleanImage, drawStamp, fileToDataUrl, loadImage, loadMarks, newId, removeMark, saveMark, STAMP_RED, trimCanvas, type CleanMode, type Mark, type MarkKind } from '../lib/library';
+import { cleanImage, drawStamp, fileToDataUrl, hasTransparency, loadImage, loadMarks, newId, removeMark, saveMark, STAMP_RED, trimCanvas, type CleanMode, type Mark, type MarkKind } from '../lib/library';
 
 interface Props {
   kind: MarkKind;
@@ -34,8 +34,19 @@ function Library({ kind, onPick, version }: { kind: MarkKind; onPick: (m: Mark) 
 function FromPhoto({ kind, onReady }: { kind: MarkKind; onReady: (c: HTMLCanvasElement | null) => void }) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [mode, setMode] = useState<CleanMode>(kind === 'stamp' ? 'red' : 'white');
+  const [transparent, setTransparent] = useState(false);
+  const [over, setOver] = useState(false);
   const [preview, setPreview] = useState('');
   const input = useRef<HTMLInputElement>(null);
+  /** 그림을 고르면 배경이 이미 투명한지 보고, 투명하면 손대지 않고 그대로 쓴다 */
+  const take = async (f: File | undefined) => {
+    if (!f || !/^image\/(png|jpeg|webp)$/.test(f.type)) return;
+    const im = await loadImage(await fileToDataUrl(f));
+    const t = hasTransparency(im);
+    setTransparent(t);
+    setMode(t ? 'none' : kind === 'stamp' ? 'red' : 'white');
+    setImg(im);
+  };
   useEffect(() => {
     if (!img) { onReady(null); return; }
     const c = trimCanvas(cleanImage(img, mode), 6);
@@ -44,16 +55,23 @@ function FromPhoto({ kind, onReady }: { kind: MarkKind; onReady: (c: HTMLCanvasE
   }, [img, mode]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="photo">
-      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setImg(await loadImage(await fileToDataUrl(f))); }} />
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; take(f); }} />
       {preview ? (
         <div className="checker"><img src={preview} alt="배경을 지운 미리보기" /></div>
       ) : (
-        <button className="photodrop" onClick={() => input.current?.click()}>
+        <button
+          className={`photodrop${over ? ' over' : ''}`}
+          onClick={() => input.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setOver(true); }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); take(e.dataTransfer.files?.[0]); }}
+        >
           <Icon name="photo" size={30} />
-          <b>{kind === 'sign' ? '종이에 한 서명 사진 고르기' : '직인을 찍은 종이 사진 고르기'}</b>
-          <small>흰 종이에 또렷하게 찍은 사진일수록 깔끔해요</small>
+          <b>{kind === 'sign' ? '서명 사진이나 그림 파일 고르기' : '직인 사진이나 그림 파일 고르기'}</b>
+          <small>JPG·PNG 모두 돼요. 배경이 투명한 PNG는 그대로 넣고, 종이 사진은 배경을 지워 드려요. 여기에 끌어다 놓아도 돼요</small>
         </button>
       )}
+      {img && transparent && mode === 'none' && <p className="small">배경이 이미 투명한 그림이라 색과 모양을 그대로 넣어요.</p>}
       {img && (
         <div className="photoopts">
           <div className="seg" role="radiogroup" aria-label="배경 지우기 방식">
@@ -156,7 +174,7 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, shape: 
 }
 
 export function MarkDialog({ kind, onClose, onPick }: Props) {
-  const tabs = kind === 'sign' ? [['draw', '직접 그리기'], ['photo', '사진에서 가져오기']] : [['make', '직인 만들기'], ['photo', '사진에서 가져오기']];
+  const tabs = kind === 'sign' ? [['draw', '직접 그리기'], ['photo', '사진·그림 파일에서']] : [['make', '직인 만들기'], ['photo', '사진·그림 파일에서']];
   const [tab, setTab] = useState(tabs[0][0]);
   const [ready, setReady] = useState<HTMLCanvasElement | null>(null);
   const [shape, setShape] = useState<'square' | 'round'>('square');
