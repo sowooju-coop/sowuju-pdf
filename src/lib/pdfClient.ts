@@ -50,6 +50,9 @@ export class PdfClient {
   }
   duplicate(indices: number[]) { return this.call<EditResult>('duplicate', { indices }); }
   extract(indices: number[]) { return this.call<Uint8Array>('extract', { indices }); }
+  placeImages(items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[]) {
+    return this.call<EditResult>('placeImages', { items }, items.map((i) => i.png.buffer));
+  }
   lines(index: number) { return this.call<TextLine[]>('lines', { index }); }
   replace(req: ReplaceRequest) { return this.call<EditResult>('replace', req); }
   undo() { return this.call<EditResult>('undo'); }

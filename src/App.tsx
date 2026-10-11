@@ -7,6 +7,9 @@ import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, rec
 import { PageRail } from './components/PageRail';
 import { PageGrid } from './components/PageGrid';
 import { PageMenu, type PageActions, type PageMenuState } from './components/PageMenu';
+import { MarkDialog } from './components/MarkDialogs';
+import { PlaceLayer, type Placed } from './components/PlaceLayer';
+import { dataUrlBytes, newId, type Mark, type MarkKind } from './lib/library';
 import { EditLayer, type EditingState } from './components/EditLayer';
 import { PageCanvas } from './components/PageCanvas';
 import { Icon, Logo } from './components/Icon';
@@ -21,7 +24,7 @@ interface Doc {
 type PrintRange = 'all' | 'current' | 'selected';
 type Tab = 'home' | 'edit' | 'page' | 'note' | 'protect';
 /** 실행 취소 기록 한 칸: 오른쪽 패널의 "이번에 고친 곳"에 쓴다 */
-interface HistItem { kind: 'text' | 'page'; page: number; before?: string; after?: string }
+interface HistItem { kind: 'text' | 'page' | 'mark'; page: number; before?: string; after?: string }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const baseName = (n: string) => n.replace(/\.pdf$/i, '');
@@ -61,6 +64,10 @@ export default function App() {
   const [overview, setOverview] = useState(false);
   const [gridSize, setGridSize] = useState(170);
   const [gridMenu, setGridMenu] = useState<PageMenuState | null>(null);
+  const [markDialog, setMarkDialog] = useState<MarkKind | null>(null);
+  const [placing, setPlacing] = useState<Mark | null>(null);
+  const [placed, setPlaced] = useState<Placed[]>([]);
+  const [activePlaced, setActivePlaced] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [hist, setHist] = useState({ canUndo: false, canRedo: false });
   const [log, setLog] = useState<{ done: HistItem[]; undone: HistItem[] }>({ done: [], undone: [] });
@@ -116,7 +123,9 @@ export default function App() {
       setMode(act === 'edit' ? 'edit' : 'view');
       setTab(act === 'pages' ? 'page' : 'edit');
       setOverview(act === 'pages');
+      setPlaced([]); setPlacing(null); setActivePlaced(null);
       if (act === 'print') setPrintOpen(true);
+      if (act === 'sign') setMarkDialog('sign');
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
       return true;
     } catch (e) {
@@ -140,6 +149,30 @@ export default function App() {
       if (f) load(f); else say('파일을 찾지 못했어요. 옮겨졌거나 지워졌을 수 있어요.');
     } catch { say('파일을 열지 못했어요.'); }
   }, [load, say]);
+
+  /** 놓아 둔 서명·직인을 PDF에 고정한다 */
+  const applyPlaced = useCallback(async () => {
+    if (!placed.length) return;
+    const items = placed.map((p) => ({ page: p.page, x: p.x, y: p.y, w: p.w, h: p.h, png: dataUrlBytes(p.src) }));
+    const kinds = new Set(placed.map((p) => p.kind));
+    setBusy('넣는 중…');
+    try {
+      applyPages(await client.placeImages(items), { kind: 'mark', page: placed[0].page });
+      setPlaced([]); setActivePlaced(null); setPlacing(null);
+      say(`${kinds.has('sign') && kinds.has('stamp') ? '서명과 직인을' : kinds.has('sign') ? '서명을' : '직인을'} 넣었어요. 되돌리기로 뺄 수 있어요.`);
+    } catch (e) { say(`넣지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [placed, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+  const applyPlacedRef = useRef(applyPlaced);
+  applyPlacedRef.current = applyPlaced;
+
+  const pickMark = useCallback((m: Mark) => {
+    setMarkDialog(null);
+    setMode('view');
+    setOverview(false);
+    setPlacing(m);
+    say(`${m.kind === 'sign' ? '서명' : '직인'}을 넣을 곳을 누르세요. Esc를 누르면 취소돼요.`);
+  }, [say]);
 
   /** 파일들을 at 자리부터 차례로 넣는다 */
   const insertFiles = useCallback(async (at: number, files: OpenedFile[]) => {
@@ -187,6 +220,7 @@ export default function App() {
 
   const doSave = useCallback(async () => {
     if (!doc) return;
+    await applyPlacedRef.current();
     setBusy('저장하는 중…');
     try {
       const bytes = await client.save();
@@ -201,6 +235,7 @@ export default function App() {
 
   const closeDoc = useCallback(() => {
     setConfirmClose(false);
+    setPlaced([]); setPlacing(null); setActivePlaced(null);
     setDoc(null);
     setMode('view');
     setEditing(null);
@@ -305,6 +340,7 @@ export default function App() {
   const doPrint = useCallback(async (range: PrintRange, dpi: number) => {
     if (!doc) return;
     setPrintOpen(false);
+    await applyPlacedRef.current();
     const list = range === 'all' ? doc.pages.map((_, i) => i) : range === 'current' ? [cur] : targets();
     const pages: PrintPage[] = [];
     try {
@@ -382,7 +418,10 @@ export default function App() {
       if (mod && k === 'o') { e.preventDefault(); doOpen(); }
       else if (mod && k === 's') { e.preventDefault(); doSave(); }
       else if (mod && k === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
-      else if ((e.target as HTMLElement).isContentEditable || (e.target as HTMLElement).tagName === 'INPUT') return;
+      else if ((e.target as HTMLElement).isContentEditable || (e.target as HTMLElement).tagName === 'INPUT' || document.querySelector('.modal')) return;
+      else if (e.key === 'Escape' && (placing || activePlaced)) { e.preventDefault(); if (placing) setPlacing(null); else setActivePlaced(null); }
+      else if (e.key === 'Enter' && placed.length) { e.preventDefault(); applyPlacedRef.current(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && activePlaced) { e.preventDefault(); setPlaced((l) => l.filter((x) => x.id !== activePlaced)); setActivePlaced(null); }
       else if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if (mod && k === 'y') { e.preventDefault(); redo(); }
       else if (!mod && k === 'e' && doc) { setTab('edit'); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }
@@ -414,13 +453,14 @@ export default function App() {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length]);
 
   useEffect(() => { window.sowuju?.onOpenPath((f) => load(f)); }, [load]);
 
   const curPage = doc?.pages[cur];
   const edits = log.done.filter((h) => h.kind === 'text');
   const curStyle = editing ? styleOverride ?? editing.style : null;
+  const activeItem = placed.find((x) => x.id === activePlaced) ?? null;
   const soon = '다음 버전에서 추가돼요';
   const pageActions: PageActions = {
     targetsFor: (i) => (sel.has(i) ? [...sel].sort((a, b) => a - b) : [i]),
@@ -495,7 +535,7 @@ export default function App() {
         )}
         {tab === 'edit' && (
           <div className="tools">
-            {tool('edit', '글자 고치기', () => { setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
+            {tool('edit', '글자 고치기', () => { applyPlacedRef.current(); setPlacing(null); setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
             {tool('text', '글자 추가')}
             {tool('image', '그림')}
             <span className="vsep" aria-hidden="true" />
@@ -503,8 +543,8 @@ export default function App() {
             {tool('pen', '펜')}
             {tool('shape', '도형')}
             <span className="vsep" aria-hidden="true" />
-            {tool('sign', '서명')}
-            {tool('stamp', '직인')}
+            {tool('sign', '서명', () => setMarkDialog('sign'), { title: '서명 그리기·불러오기' })}
+            {tool('stamp', '직인', () => setMarkDialog('stamp'), { title: '직인 만들기·불러오기' })}
           </div>
         )}
         {tab === 'page' && (
@@ -570,6 +610,24 @@ export default function App() {
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev} root={viewerEl} className="sheet" />
+                  {(placing || placed.some((x) => x.page === i)) && (
+                    <PlaceLayer
+                      index={i} info={p} zoom={zoom}
+                      items={placed.filter((x) => x.page === i)}
+                      activeId={activePlaced}
+                      placing={placing}
+                      onPlace={(page, cx, cy) => {
+                        if (!placing) return;
+                        const it: Placed = { id: newId(), page, kind: placing.kind, src: placing.src, w: placing.w, h: placing.h, x: cx - placing.w / 2, y: cy - placing.h / 2 };
+                        setPlaced((l) => [...l, it]); setActivePlaced(it.id); setPlacing(null);
+                      }}
+                      onChange={(id, patch) => setPlaced((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)))}
+                      onSelect={setActivePlaced}
+                      onRemove={(id) => { setPlaced((l) => l.filter((x) => x.id !== id)); setActivePlaced(null); }}
+                      onApply={() => applyPlacedRef.current()}
+                      onAgain={(id) => { const it = placed.find((x) => x.id === id); if (it) setPlacing({ id: newId(), kind: it.kind, src: it.src, w: it.w, h: it.h }); }}
+                    />
+                  )}
                   {mode === 'edit' && (
                     <EditLayer
                       client={client} index={i} info={p} zoom={zoom} rev={rev}
@@ -585,7 +643,18 @@ export default function App() {
               ))}
             </div>
           </div>
-          {mode === 'edit' && !overview && (
+          {(placing || placed.length > 0) && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              {placing
+                ? <span><b>{placing.kind === 'sign' ? '서명' : '직인'} 넣을 곳을 누르세요</b><span className="muted"> · Esc로 취소</span></span>
+                : <span><b>{placed.length}개 놓았어요</b><span className="muted"> · 끌어서 옮기고 모서리로 크기를 바꾼 뒤 적용</span></span>}
+              {placing
+                ? <button onClick={() => setPlacing(null)}>취소</button>
+                : <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>}
+            </div>
+          )}
+          {mode === 'edit' && !overview && !placing && placed.length === 0 && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               <span><b>글자 고치는 중</b><span className="muted"> · 줄을 누르거나 글자 위를 끌어서 고르세요</span></span>
@@ -605,7 +674,25 @@ export default function App() {
         </main>
 
         <aside className="inspector" aria-label="속성">
-          {mode === 'edit' && editing && curStyle ? (
+          {activeItem ? (
+            <>
+              <section>
+                <h2>{activeItem.kind === 'sign' ? '넣은 서명' : '넣은 직인'}</h2>
+                <div className="markprev checker"><img src={activeItem.src} alt="" /></div>
+                <dl className="props">
+                  <dt>크기</dt><dd>{pt2mm(activeItem.w)} × {pt2mm(activeItem.h)}mm</dd>
+                  <dt>쪽</dt><dd>{activeItem.page + 1}쪽</dd>
+                </dl>
+                <div className="row3">
+                  <button className="btn sm" onClick={() => setPlaced((l) => l.map((x) => (x.id === activeItem.id ? { ...x, w: x.w * 0.9, h: x.h * 0.9 } : x)))}>작게</button>
+                  <button className="btn sm" onClick={() => setPlaced((l) => l.map((x) => (x.id === activeItem.id ? { ...x, w: x.w * 1.1, h: x.h * 1.1 } : x)))}>크게</button>
+                  <button className="btn sm iconly danger" aria-label="빼기" onClick={() => { setPlaced((l) => l.filter((x) => x.id !== activeItem.id)); setActivePlaced(null); }}><Icon name="trash" size={16} /></button>
+                </div>
+                <button className="btn navy" onClick={() => applyPlacedRef.current()}>적용해서 문서에 고정</button>
+              </section>
+              <p className="note"><Icon name="shieldCheck" size={16} />적용하면 문서에 그림으로 고정돼요. 저장이나 인쇄를 누르면 자동으로 적용돼요.</p>
+            </>
+          ) : mode === 'edit' && editing && curStyle ? (
             <>
               <section>
                 <h2>고치는 글자</h2>
@@ -671,6 +758,7 @@ export default function App() {
         </aside>
       </div>
 
+      {markDialog && <MarkDialog kind={markDialog} onClose={() => setMarkDialog(null)} onPick={pickMark} />}
       {printOpen && <PrintDialog hasSel={sel.size > 0} pageCount={doc.pages.length} current={cur + 1} onClose={() => setPrintOpen(false)} onPrint={doPrint} />}
       {confirmClose && (
         <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) setConfirmClose(false); }}>

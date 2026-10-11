@@ -3,6 +3,7 @@
 import * as mupdf from 'mupdf';
 import type { PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { readLines, replaceText } from './textEdit';
+import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
 let doc: mupdf.PDFDocument | null = null;
 /** 실행 취소용: 바꾸기 직전 문서를 통째로 저장해 둔다 */
@@ -143,6 +144,17 @@ function duplicatePages(indices: number[]) {
   copy.destroy();
 }
 
+/** 서명·직인 그림을 쪽에 고정해 넣는다 (x, y, w, h: 화면 좌표 pt) */
+function placeImage(index: number, x: number, y: number, w: number, h: number, png: Uint8Array) {
+  const d = requireDoc();
+  const page = d.loadPage(index);
+  const img = new mupdf.Image(png);
+  const key = addResource(d, page, 'XObject', 'SowujuIm', d.addImage(img));
+  appendContent(d, page, `q ${rectToImageMatrix(page, x, y, w, h)} cm /${key} Do Q`);
+  img.destroy();
+  page.destroy();
+}
+
 /** 고른 쪽만 새 PDF로 */
 function extractPages(indices: number[]) {
   const out = new mupdf.PDFDocument();
@@ -193,6 +205,11 @@ const handlers: Record<string, (args: any) => any> = {
   },
   duplicate: ({ indices }) => { remember(); duplicatePages(indices); return { pages: pageInfos(), ...history() }; },
   extract: ({ indices }) => extractPages(indices),
+  placeImages: ({ items }: { items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[] }) => {
+    remember();
+    for (const it of items) placeImage(it.page, it.x, it.y, it.w, it.h, it.png);
+    return { pages: pageInfos(), ...history() };
+  },
   lines: ({ index }) => readLines(requireDoc(), index),
   replace: async (req: ReplaceRequest) => { remember(); await replaceText(requireDoc(), req); return { pages: pageInfos(), ...history() }; },
   undo: () => { const b = undoStack.pop(); if (b) { redoStack.push(snapshot()); reopen(b); } return { pages: pageInfos(), ...history() }; },

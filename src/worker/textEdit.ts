@@ -1,6 +1,7 @@
 // 글자 읽기와 글자 바꾸기. 원래 글자는 redaction으로 파일에서 진짜로 지우고, 같은 자리에 새 글자를 쓴다.
 import * as mupdf from 'mupdf';
 import type { TextLine, ReplaceRequest } from '../lib/protocol';
+import { addResource, appendContent, applyMatrix, num } from './pdfUtil';
 
 /** 페이지의 글자를 줄 단위로, 글자마다 정확한 위치와 함께 읽는다 (좌표: 화면과 같은 페이지 공간, pt, 위가 0) */
 export function readLines(doc: mupdf.PDFDocument, index: number): TextLine[] {
@@ -58,9 +59,6 @@ async function pdfFont(doc: mupdf.PDFDocument, file: string) {
   return m.get(file)!;
 }
 
-const apply = (m: mupdf.Matrix, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-const n = (v: number) => (Math.abs(v) < 1e-6 ? '0' : String(+v.toFixed(4)));
-
 /** 지울 글자 상자들을 redaction으로 지운다. 표 선·그림은 그대로 둔다 */
 function redact(page: mupdf.PDFPage, quads: mupdf.Quad[]) {
   if (!quads.length) return;
@@ -79,45 +77,20 @@ function redact(page: mupdf.PDFPage, quads: mupdf.Quad[]) {
 
 /** 페이지 내용 끝에 글자를 쓰는 내용 스트림을 덧붙인다 */
 function appendText(doc: mupdf.PDFDocument, page: mupdf.PDFPage, fontRef: mupdf.PDFObject, font: mupdf.Font, req: ReplaceRequest) {
-  const obj = page.getObject();
-  let res = obj.get('Resources');
-  if (res.isNull()) {
-    const inh = obj.getInheritable('Resources');
-    res = inh.isNull() ? doc.addObject(doc.newDictionary()) : inh;
-    obj.put('Resources', res);
-  }
-  let fonts = res.get('Font');
-  if (fonts.isNull()) {
-    fonts = doc.newDictionary();
-    res.put('Font', fonts);
-  }
-  let k = 1;
-  while (!fonts.get(`SowujuF${k}`).isNull()) k++;
-  const key = `SowujuF${k}`;
-  fonts.put(key, fontRef);
-
+  const key = addResource(doc, page, 'Font', 'SowujuF', fontRef);
   // 화면 좌표(위가 0)를 PDF 좌표로 바꾸고, 원래 줄 방향 그대로 쓴다 (회전된 페이지 포함)
   const inv = mupdf.Matrix.invert(page.getTransform());
-  const [ox, oy] = apply(inv, req.x, req.y);
-  const [dx0, dy0] = apply(inv, req.x + req.dir[0], req.y + req.dir[1]);
+  const [ox, oy] = applyMatrix(inv, req.x, req.y);
+  const [dx0, dy0] = applyMatrix(inv, req.x + req.dir[0], req.y + req.dir[1]);
   let ux = dx0 - ox, uy = dy0 - oy;
   const len = Math.hypot(ux, uy) || 1;
   ux /= len; uy /= len;
   const hex = [...req.text].map((ch) => font.encodeCharacter(ch.codePointAt(0)!).toString(16).padStart(4, '0')).join('');
   const [r, g, b] = req.color;
-  const stream =
+  const n = num;
+  appendContent(doc, page,
     `q BT /${key} ${n(req.size)} Tf ${n(r)} ${n(g)} ${n(b)} rg ${n(req.spacing)} Tc ` +
-    `${n(ux)} ${n(uy)} ${n(-uy)} ${n(ux)} ${n(ox)} ${n(oy)} Tm <${hex}> Tj ET Q`;
-
-  // 원래 내용이 남긴 그래픽 상태가 새 글자에 영향을 주지 않도록 q … Q 로 감싼다
-  const contents = obj.get('Contents');
-  const arr = doc.newArray();
-  arr.push(doc.addStream('q\n', doc.newDictionary()));
-  if (contents.isArray()) for (let i = 0; i < contents.length; i++) arr.push(contents.get(i));
-  else if (!contents.isNull()) arr.push(contents);
-  arr.push(doc.addStream('\nQ\n', doc.newDictionary()));
-  arr.push(doc.addStream(stream, doc.newDictionary()));
-  obj.put('Contents', arr);
+    `${n(ux)} ${n(uy)} ${n(-uy)} ${n(ux)} ${n(ox)} ${n(oy)} Tm <${hex}> Tj ET Q`);
 }
 
 export async function replaceText(doc: mupdf.PDFDocument, req: ReplaceRequest) {
