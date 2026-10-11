@@ -46,7 +46,7 @@ function createWindow() {
 async function sendPath(p) {
   try {
     const bytes = await fs.readFile(p);
-    win.webContents.send('open-path', { name: path.basename(p), bytes: new Uint8Array(bytes) });
+    win.webContents.send('open-path', { name: path.basename(p), bytes: new Uint8Array(bytes), path: p });
   } catch (e) {
     dialog.showErrorBox('파일을 열지 못했어요', String(e.message || e));
   }
@@ -89,7 +89,33 @@ ipcMain.handle('open-file', async () => {
   const r = await dialog.showOpenDialog(win, { title: 'PDF 열기', filters: [{ name: 'PDF 문서', extensions: ['pdf'] }], properties: ['openFile'] });
   if (r.canceled || !r.filePaths[0]) return null;
   const bytes = await fs.readFile(r.filePaths[0]);
-  return { name: path.basename(r.filePaths[0]), bytes: new Uint8Array(bytes) };
+  return { name: path.basename(r.filePaths[0]), bytes: new Uint8Array(bytes), path: r.filePaths[0] };
+});
+
+// 최근 문서: 사용자 폴더의 recent.json 에 경로·이름·쪽수만 기록한다 (파일 내용은 저장하지 않음)
+const RECENT = () => path.join(app.getPath('userData'), 'recent.json');
+async function readRecent() {
+  try { return JSON.parse(await fs.readFile(RECENT(), 'utf8')); } catch { return []; }
+}
+ipcMain.handle('recent-list', async () => {
+  const list = await readRecent();
+  const alive = [];
+  for (const it of list) {
+    try { await fs.access(it.path); alive.push(it); } catch { /* 옮겨지거나 지워진 파일은 뺀다 */ }
+  }
+  return alive.slice(0, 12);
+});
+ipcMain.handle('recent-add', async (_e, item) => {
+  if (!item || typeof item.path !== 'string' || !/\.pdf$/i.test(item.path)) return;
+  const list = (await readRecent()).filter((x) => x.path !== item.path);
+  list.unshift({ path: item.path, name: String(item.name), pages: Number(item.pages) || 0, openedAt: Date.now() });
+  await fs.writeFile(RECENT(), JSON.stringify(list.slice(0, 30)), 'utf8');
+});
+ipcMain.handle('open-recent', async (_e, p) => {
+  const list = await readRecent();
+  if (!list.some((x) => x.path === p)) return null;
+  const bytes = await fs.readFile(p);
+  return { name: path.basename(p), bytes: new Uint8Array(bytes), path: p };
 });
 
 ipcMain.handle('save-file', async (_e, name, bytes) => {

@@ -14,12 +14,18 @@ interface Props {
   onMessage: (m: string) => void;
   /** 고친 글자의 글꼴을 바꿀 수 있도록 바깥 막대에 알린다 */
   onEditing: (s: EditingState | null) => void;
+  /** 입력 중인 글자 (오른쪽 패널의 "고치는 글자" 표시용) */
+  onText: (t: string) => void;
   styleOverride: EditStyle | null;
+  onStyle: (s: EditStyle) => void;
 }
 
 export interface EditingState {
   page: number;
   style: EditStyle;
+  original: string;
+  size: number;
+  fontName: string;
 }
 
 interface Sel { li: number; i0: number; i1: number; style: EditStyle }
@@ -39,7 +45,7 @@ function baselineRatio(family: FontFamily) {
 }
 
 /** 글자 수정 모드에서 페이지 위에 겹치는 층: 줄 표시, 고르기, 고치는 입력칸 */
-export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage, onEditing, styleOverride }: Props) {
+export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage, onEditing, onText, styleOverride, onStyle }: Props) {
   const layer = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLSpanElement>(null);
   const [lines, setLines] = useState<TextLine[] | null>(null);
@@ -68,7 +74,11 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
 
   const style = sel ? styleOverride ?? sel.style : null;
 
-  useEffect(() => { onEditing(sel ? { page: index, style: sel.style } : null); }, [sel]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!sel || !lines) { onEditing(null); return; }
+    const ref = lines[sel.li].chars[sel.i0];
+    onEditing({ page: index, style: sel.style, original: selectedText(lines[sel.li], sel.i0, sel.i1), size: ref.size, fontName: ref.font.replace(/^[A-Z]{6}\+/, '').replace(/-\d{3,}$/, '') });
+  }, [sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 입력칸이 열리면 글자를 모두 고른 상태로 둔다
   useLayoutEffect(() => {
@@ -76,6 +86,7 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
     if (!sel || !el) return;
     done.current = false;
     el.textContent = selectedText(lines![sel.li], sel.i0, sel.i1);
+    onText(el.textContent);
     el.focus();
     const r = document.createRange();
     r.selectNodeContents(el);
@@ -213,12 +224,33 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
             transform: `rotate(${angle}deg) translateY(${-baselineRatio(style.family) * start.size * zoom}px)`,
           }}
           onPointerDown={(e) => e.stopPropagation()}
+          onInput={(e) => onText((e.currentTarget as HTMLElement).innerText)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); finish(true); }
             else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
           }}
           onBlur={() => finish(true)}
         />
+      )}
+      {start && style && (
+        <div
+          className="minibar"
+          role="toolbar"
+          aria-label="고친 글자 모양"
+          style={{ left: start.x * zoom, top: Math.max(4, (start.y - start.size * 1.1) * zoom - 50) }}
+          onPointerDown={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <div className="seg" role="radiogroup" aria-label="글꼴">
+            {(Object.keys(FONTS) as FontFamily[]).map((f) => (
+              <button key={f} role="radio" aria-checked={style.family === f} className={style.family === f ? 'on' : ''} style={{ fontFamily: FONTS[f].css }} onClick={() => onStyle({ ...style, family: f })}>{FONTS[f].label}</button>
+            ))}
+          </div>
+          <button className={`mb-b${style.bold ? ' on' : ''}`} aria-pressed={style.bold} aria-label="굵게" onClick={() => onStyle({ ...style, bold: !style.bold })}>B</button>
+          <span className="mb-sep" aria-hidden="true" />
+          <button className="mb-ok" onClick={() => finish(true)}>적용<small>Enter</small></button>
+          <button className="mb-no" onClick={() => finish(false)}>취소<small>Esc</small></button>
+        </div>
       )}
     </div>
   );

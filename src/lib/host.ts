@@ -4,11 +4,30 @@ export interface PrintPage {
   landscape: boolean;
 }
 
+export interface OpenedFile {
+  name: string;
+  bytes: Uint8Array;
+  /** 설치형에서만 있음. 최근 문서에 기록할 때 쓴다 */
+  path?: string;
+}
+
+export interface RecentFile {
+  path: string;
+  name: string;
+  pages: number;
+  openedAt: number;
+}
+
 interface AppBridge {
-  openFile(): Promise<{ name: string; bytes: Uint8Array } | null>;
+  openFile(): Promise<OpenedFile | null>;
   saveFile(name: string, bytes: Uint8Array): Promise<string | null>;
   print(title: string, pages: PrintPage[]): Promise<{ ok: boolean; reason?: string }>;
-  onOpenPath(cb: (file: { name: string; bytes: Uint8Array }) => void): void;
+  onOpenPath(cb: (file: OpenedFile) => void): void;
+  pathForFile(file: File): string;
+  recentList(): Promise<RecentFile[]>;
+  recentAdd(item: Omit<RecentFile, 'openedAt'>): Promise<void>;
+  openRecent(path: string): Promise<OpenedFile | null>;
+  setZoom(factor: number): void;
 }
 
 declare global {
@@ -19,7 +38,7 @@ declare global {
 
 export const isApp = !!window.sowuju;
 
-export function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> {
+export function openFile(): Promise<OpenedFile | null> {
   if (window.sowuju) return window.sowuju.openFile();
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -33,6 +52,11 @@ export function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> 
   });
 }
 
+/** 끌어다 놓은 파일 읽기 */
+export async function readDropped(f: File): Promise<OpenedFile> {
+  return { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()), path: window.sowuju?.pathForFile(f) || undefined };
+}
+
 export async function saveFile(name: string, bytes: Uint8Array): Promise<string | null> {
   if (window.sowuju) return window.sowuju.saveFile(name, bytes);
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
@@ -43,6 +67,12 @@ export async function saveFile(name: string, bytes: Uint8Array): Promise<string 
   setTimeout(() => URL.revokeObjectURL(url), 30000);
   return name;
 }
+
+export const recentList = (): Promise<RecentFile[]> => window.sowuju?.recentList() ?? Promise.resolve([]);
+export const recentAdd = (item: Omit<RecentFile, 'openedAt'>) => window.sowuju?.recentAdd(item);
+export const openRecent = (path: string) => window.sowuju?.openRecent(path) ?? Promise.resolve(null);
+/** 쉬운 모드 글씨 크기. 설치형에서는 화면 전체를 확대한다 */
+export const setUiZoom = (f: number) => window.sowuju?.setZoom(f);
 
 /** 인쇄: 설치형은 Electron 인쇄 창, 브라우저는 숨긴 iframe으로 인쇄한다 */
 export async function printPages(title: string, pages: PrintPage[]): Promise<{ ok: boolean; reason?: string }> {
