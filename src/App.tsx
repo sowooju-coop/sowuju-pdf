@@ -3,7 +3,8 @@ import { PdfClient, type EditResult } from './lib/pdfClient';
 import type { PageInfo, ReplaceRequest } from './lib/protocol';
 import { FONTS, loadFonts } from './lib/fonts';
 import type { EditStyle } from './lib/textDiff';
-import { openFile, openRecent, printPages, readDropped, recentAdd, saveFile, setUiZoom, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
+import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, setUiZoom, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
+import { PageRail } from './components/PageRail';
 import { EditLayer, type EditingState } from './components/EditLayer';
 import { PageCanvas } from './components/PageCanvas';
 import { Icon, Logo } from './components/Icon';
@@ -90,11 +91,11 @@ export default function App() {
     setZoom(clamp(z, 0.25, 4));
   }, []);
 
-  const load = useCallback(async (file: OpenedFile, password?: string) => {
+  const load = useCallback(async (file: OpenedFile, password?: string): Promise<boolean> => {
     setBusy('여는 중…');
     try {
       const r = await client.open(file.bytes, password);
-      if (r.needsPassword) { setPw({ file, wrong: !!r.wrongPassword }); return; }
+      if (r.needsPassword) { setPw({ file, wrong: !!r.wrongPassword }); return false; }
       setPw(null);
       setDoc({ name: file.name, path: file.path, size: file.bytes.length, pages: r.pages! });
       setSel(new Set());
@@ -111,8 +112,10 @@ export default function App() {
       setTab(act === 'pages' ? 'page' : 'edit');
       if (act === 'print') setPrintOpen(true);
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
+      return true;
     } catch (e) {
       say(`"${file.name}" 파일을 열지 못했어요. ${(e as Error).message}`);
+      return false;
     } finally {
       setBusy(null);
     }
@@ -131,6 +134,50 @@ export default function App() {
       if (f) load(f); else say('파일을 찾지 못했어요. 옮겨졌거나 지워졌을 수 있어요.');
     } catch { say('파일을 열지 못했어요.'); }
   }, [load, say]);
+
+  /** 파일들을 at 자리부터 차례로 넣는다 */
+  const insertFiles = useCallback(async (at: number, files: OpenedFile[]) => {
+    let pos = at, total = 0, first = -1, last: EditResult | null = null;
+    const skipped: string[] = [];
+    for (let k = 0; k < files.length; k++) {
+      const f = files[k], kind = fileKind(f);
+      if (!kind) { skipped.push(f.name); continue; }
+      setBusy(`쪽 넣는 중… ${k + 1} / ${files.length}`);
+      try {
+        const r = await client.insertFile(pos, f.bytes, kind);
+        if (r.needsPassword) { skipped.push(`${f.name}(암호)`); continue; }
+        if (first < 0) first = r.at;
+        pos = r.at + r.count; total += r.count; last = r;
+      } catch { skipped.push(f.name); }
+    }
+    setBusy(null);
+    if (last) {
+      applyPages(last, { kind: 'page', page: at });
+      setSel(new Set());
+      requestAnimationFrame(() => goToRef.current(first));
+    }
+    if (total) say(`${total}쪽을 ${first + 1}번째 자리에 넣었어요.${skipped.length ? ` 넣지 못한 파일: ${skipped.join(', ')}` : ''}`);
+    else if (skipped.length) say(`넣지 못했어요: ${skipped.join(', ')}. 암호가 걸린 PDF는 먼저 따로 열어 주세요.`);
+  }, [client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 시작 화면의 합치기: 첫 PDF를 열고 나머지를 뒤에 붙인다. 사진만 고르면 새 PDF로 만든다 */
+  const doMerge = useCallback(async () => {
+    const files = (await openFiles()).filter((f) => fileKind(f));
+    if (!files.length) return;
+    const first = files.findIndex((f) => fileKind(f) === 'pdf');
+    if (first >= 0) {
+      const ok = await load(files[first]);
+      if (!ok) return;
+      const rest = files.filter((_, i) => i !== first);
+      if (rest.length) await insertFiles(Number.MAX_SAFE_INTEGER, rest);
+    } else {
+      const r = await client.newDoc();
+      setDoc({ name: '새 문서.pdf', size: 0, pages: r.pages });
+      setDirty(true); setSavedAt(null); setHist({ canUndo: false, canRedo: false }); setLog({ done: [], undone: [] }); setMode('view'); setTab('page');
+      await insertFiles(0, files);
+      requestAnimationFrame(() => setTimeout(() => fitWidthRef.current(), 50));
+    }
+  }, [client, load, insertFiles]);
 
   const doSave = useCallback(async () => {
     if (!doc) return;
@@ -181,13 +228,54 @@ export default function App() {
     setLog((l) => (l.undone.length ? { done: [...l.done, l.undone[l.undone.length - 1]], undone: l.undone.slice(0, -1) } : l));
   }, [client, hist, applyPages]);
 
-  const rotate = useCallback(async (delta: number) => {
-    const t = targets();
+  const rotate = useCallback(async (delta: number, idx?: number[]) => {
+    const t = idx ?? targets();
     if (t.length) applyPages(await client.rotate(t, delta), { kind: 'page', page: t[0] });
   }, [client, targets, applyPages]);
 
-  const remove = useCallback(async () => {
-    const t = targets();
+  const insertBlank = useCallback(async (at: number) => {
+    if (!doc) return;
+    const ref = doc.pages[clamp(at - 1, 0, doc.pages.length - 1)] ?? { width: 595.28, height: 841.89 };
+    applyPages(await client.insertBlank(at, ref.width, ref.height), { kind: 'page', page: at });
+    setSel(new Set());
+    requestAnimationFrame(() => goToRef.current(at));
+    say(`${at + 1}번째 자리에 빈 쪽을 넣었어요.`);
+  }, [client, doc, applyPages, say]);
+
+  const pickFiles = useCallback(async (at: number) => {
+    const files = await openFiles();
+    if (files.length) insertFiles(at, files);
+  }, [insertFiles]);
+
+  const duplicate = useCallback(async (idx?: number[]) => {
+    const t = idx ?? targets();
+    if (!t.length) return;
+    applyPages(await client.duplicate(t), { kind: 'page', page: t[t.length - 1] + 1 });
+    setSel(new Set());
+    say(`${t.length}쪽을 복제했어요.`);
+  }, [client, targets, applyPages, say]);
+
+  const extract = useCallback(async (idx?: number[]) => {
+    const t = idx ?? targets();
+    if (!doc || !t.length) return;
+    setBusy('새 PDF 만드는 중…');
+    try {
+      const bytes = await client.extract(t);
+      const label = t.length === 1 ? `${t[0] + 1}쪽` : `${t.length}쪽`;
+      const where = await saveFile(`${baseName(doc.name)}_${label}.pdf`, bytes);
+      if (where) say(`${label}을 새 PDF로 저장했어요.`);
+    } catch (e) { say(`저장하지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, doc, targets, say]);
+
+  const reorder = useCallback(async (order: number[]) => {
+    applyPages(await client.move(order), { kind: 'page', page: order.indexOf(cur) });
+    setSel(new Set());
+    setCur(order.indexOf(cur));
+  }, [client, applyPages, cur]);
+
+  const remove = useCallback(async (idx?: number[]) => {
+    const t = idx ?? targets();
     if (!doc || !t.length) return;
     if (t.length >= doc.pages.length) { say('모든 페이지를 지울 수는 없어요. 한 쪽 이상 남겨 주세요.'); return; }
     applyPages(await client.delete(t), { kind: 'page', page: t[0] });
@@ -251,14 +339,19 @@ export default function App() {
   }, [doc]);
 
   const goTo = useCallback((i: number) => {
-    if (!doc) return;
-    const n = clamp(i, 0, doc.pages.length - 1);
-    const el = viewer.current?.querySelectorAll<HTMLElement>('.page')[n];
-    if (el && viewer.current) viewer.current.scrollTop = el.offsetTop - 24;
+    const els = viewer.current?.querySelectorAll<HTMLElement>('.page');
+    if (!els || !els.length) return;
+    const n = clamp(i, 0, els.length - 1);
+    if (viewer.current) viewer.current.scrollTop = els[n].offsetTop - 24;
     setCur(n);
-  }, [doc]);
+  }, []);
+  const goToRef = useRef(goTo);
+  goToRef.current = goTo;
+  const fitWidthRef = useRef(() => {});
+  fitWidthRef.current = () => { if (doc) fitWidth(doc.pages, true); };
 
   const onThumb = (i: number, e: React.MouseEvent) => {
+    if (i < 0) { setSel(new Set()); return; }
     const s = new Set(sel);
     if (e.shiftKey && lastClick.current !== null) {
       s.clear();
@@ -294,10 +387,16 @@ export default function App() {
     };
     const onDrop = async (e: DragEvent) => {
       e.preventDefault();
-      const f = e.dataTransfer?.files?.[0];
-      if (!f) return;
-      if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { say('PDF 파일만 열 수 있어요.'); return; }
-      load(await readDropped(f));
+      const list = [...(e.dataTransfer?.files ?? [])].filter((f) => fileKind(f));
+      if (!list.length) { say('PDF나 JPG·PNG 파일만 넣을 수 있어요.'); return; }
+      const files = await Promise.all(list.map(readDropped));
+      if (doc) { insertFiles(cur + 1, files); return; }
+      const first = files.findIndex((f) => fileKind(f) === 'pdf');
+      if (first < 0) { say('사진을 PDF로 만들려면 시작 화면의 "합치기"를 써 주세요.'); return; }
+      if (await load(files[first])) {
+        const rest = files.filter((_, i) => i !== first);
+        if (rest.length) insertFiles(Number.MAX_SAFE_INTEGER, rest);
+      }
     };
     const onOver = (e: DragEvent) => e.preventDefault();
     window.addEventListener('keydown', onKey);
@@ -308,11 +407,10 @@ export default function App() {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles]);
 
   useEffect(() => { window.sowuju?.onOpenPath((f) => load(f)); }, [load]);
 
-  const thumbZoom = (p: PageInfo) => Math.min(96 / p.width, 136 / p.height);
   const curPage = doc?.pages[cur];
   const edits = log.done.filter((h) => h.kind === 'text');
   const curStyle = editing ? styleOverride ?? editing.style : null;
@@ -321,7 +419,7 @@ export default function App() {
   if (!doc) {
     return (
       <>
-        <StartScreen easy={easy} easyScale={easyScale} onEasy={setEasy} onEasyScale={setEasyScale} onOpen={doOpen} onOpenRecent={doOpenRecent} />
+        <StartScreen easy={easy} easyScale={easyScale} onEasy={setEasy} onEasyScale={setEasyScale} onOpen={(a) => (a === 'merge' ? doMerge() : doOpen(a))} onOpenRecent={doOpenRecent} />
         {pw && <PasswordDialog pw={pw} onCancel={() => setPw(null)} onSubmit={(v) => load(pw.file, v)} />}
         {busy && <div className="busy"><div>{busy}</div></div>}
         <div className={`toast${toast ? ' show' : ''}`} role="status">{toast}</div>
@@ -372,6 +470,7 @@ export default function App() {
         {tab === 'home' && (
           <div className="tools">
             {tool('open', '열기', () => doOpen())}
+            {tool('merge', '합치기', () => pickFiles(doc.pages.length), { title: '다른 PDF나 사진을 맨 뒤에 붙이기' })}
             {tool('save', '저장', doSave)}
             {tool('print', '인쇄', () => setPrintOpen(true))}
             <span className="vsep" aria-hidden="true" />
@@ -394,15 +493,18 @@ export default function App() {
         )}
         {tab === 'page' && (
           <div className="tools">
-            {tool('rotl', '왼쪽으로 돌리기', () => rotate(-90))}
-            {tool('rotr', '오른쪽으로 돌리기', () => rotate(90))}
+            {tool('plus', '빈 쪽 넣기', () => insertBlank((sel.size ? Math.max(...sel) : cur) + 1), { title: '지금 보는 쪽 뒤에 빈 쪽 넣기' })}
+            {tool('merge', '파일에서 넣기', () => pickFiles((sel.size ? Math.max(...sel) : cur) + 1), { title: '다른 PDF나 사진을 지금 보는 쪽 뒤에 넣기' })}
+            {tool('pages', '복제', () => duplicate())}
             <span className="vsep" aria-hidden="true" />
+            {tool('rotl', '왼쪽으로', () => rotate(-90))}
+            {tool('rotr', '오른쪽으로', () => rotate(90))}
             {tool('up', '앞으로', () => move(-1))}
             {tool('down', '뒤로', () => move(1))}
             <span className="vsep" aria-hidden="true" />
-            {tool('merge', '합치기')}
-            {tool('trash', '지우기', remove, { danger: true })}
-            <span className="hint">{sel.size ? `${sel.size}쪽 골랐어요` : '왼쪽 목록에서 Ctrl·Shift로 여러 쪽을 고를 수 있어요'}</span>
+            {tool('save', '새 PDF로 저장', () => extract(), { title: '고른 쪽(없으면 지금 보는 쪽)만 새 PDF로 저장' })}
+            {tool('trash', '지우기', () => remove(), { danger: true })}
+            <span className="hint">{sel.size ? `${sel.size}쪽 골랐어요` : 'Ctrl·Shift로 여러 쪽 고르기'}</span>
           </div>
         )}
         {tab === 'note' && (
@@ -421,14 +523,19 @@ export default function App() {
       </div>
 
       <div className="work">
-        <aside className="rail" aria-label="페이지 목록" onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()); }}>
-          {doc.pages.map((p, i) => (
-            <button key={i} className={`thumb${sel.has(i) ? ' sel' : ''}${cur === i ? ' cur' : ''}`} onClick={(e) => onThumb(i, e)} aria-label={`${i + 1}쪽`} aria-current={cur === i ? 'page' : undefined}>
-              <PageCanvas client={client} index={i} info={p} zoom={thumbZoom(p)} rev={rev} root={null} className="tbox" />
-              <span className="num">{i + 1}</span>
-            </button>
-          ))}
-        </aside>
+        <PageRail
+          client={client} pages={doc.pages} rev={rev} cur={cur} sel={sel}
+          onThumb={onThumb}
+          targetsFor={(i) => (sel.has(i) ? [...sel].sort((a, b) => a - b) : [i])}
+          onReorder={reorder}
+          onInsertBlank={insertBlank}
+          onPickFiles={pickFiles}
+          onInsertFiles={insertFiles}
+          onDuplicate={duplicate}
+          onRotate={(idx, d) => rotate(d, idx)}
+          onExtract={extract}
+          onDelete={remove}
+        />
 
         <main className="stage">
           <div className="viewer" ref={(el) => { viewer.current = el; if (el !== viewerEl) setViewerEl(el); }}>
@@ -503,9 +610,10 @@ export default function App() {
                     <dt>방향</dt><dd>{curPage.width > curPage.height ? '가로' : '세로'}</dd>
                   </dl>
                   <div className="row3">
-                    <button className="btn sm" onClick={() => rotate(90)}>돌리기</button>
-                    <button className="btn sm" onClick={() => { setSel(new Set()); setPrintOpen(true); }}>인쇄</button>
-                    <button className="btn sm iconly danger" aria-label="이 쪽 지우기" onClick={remove}><Icon name="trash" size={16} /></button>
+                    <button className="btn sm" onClick={() => rotate(90, [cur])}>돌리기</button>
+                    <button className="btn sm" onClick={() => duplicate([cur])}>복제</button>
+                    <button className="btn sm" onClick={() => insertBlank(cur + 1)}>빈 쪽</button>
+                    <button className="btn sm iconly danger" aria-label="이 쪽 지우기" onClick={() => remove([cur])}><Icon name="trash" size={16} /></button>
                   </div>
                 </section>
               )}

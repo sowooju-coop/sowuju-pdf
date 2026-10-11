@@ -88,6 +88,72 @@ function deletePages(indices: number[]) {
   [...indices].sort((a, b) => b - a).forEach((i) => d.deletePage(i));
 }
 
+/** 넣을 자리를 0 ~ 쪽수 사이로 맞춘다 (쪽수 = 맨 뒤) */
+const clampAt = (at: number) => Math.max(0, Math.min(Math.floor(at), requireDoc().countPages()));
+
+/** 지금 보는 쪽과 같은 크기의 빈 쪽을 at 자리에 넣는다 */
+function insertBlank(at: number, width: number, height: number) {
+  const d = requireDoc();
+  const obj = d.addPage([0, 0, width, height], 0, d.newDictionary(), '');
+  d.insertPage(at, obj);
+}
+
+/** 다른 PDF의 모든 쪽을 at 자리부터 넣는다 */
+function insertPdf(at: number, bytes: Uint8Array) {
+  const d = requireDoc();
+  const src = mupdf.Document.openDocument(bytes, 'application/pdf');
+  if (src.needsPassword()) { src.destroy(); return { needsPassword: true, count: 0 }; }
+  const pdf = src as mupdf.PDFDocument;
+  const n = pdf.countPages();
+  const map = d.newGraftMap();
+  for (let i = 0; i < n; i++) map.graftPage(at + i, pdf, i);
+  map.destroy();
+  pdf.destroy();
+  return { count: n };
+}
+
+/** 사진 한 장을 A4 한 쪽으로 넣는다 (사진 방향에 맞춰 세로·가로, 여백 없이 가운데) */
+function insertImage(at: number, bytes: Uint8Array) {
+  const d = requireDoc();
+  const img = new mupdf.Image(bytes);
+  const iw = img.getWidth(), ih = img.getHeight();
+  const land = iw > ih;
+  const W = land ? 842 : 595, H = land ? 595 : 842;
+  const s = Math.min(W / iw, H / ih), w = iw * s, h = ih * s;
+  const ref = d.addImage(img);
+  const xo = d.newDictionary();
+  xo.put('Im0', ref);
+  const res = d.newDictionary();
+  res.put('XObject', xo);
+  const f = (v: number) => v.toFixed(3);
+  const obj = d.addPage([0, 0, W, H], 0, res, `q ${f(w)} 0 0 ${f(h)} ${f((W - w) / 2)} ${f((H - h) / 2)} cm /Im0 Do Q`);
+  d.insertPage(at, obj);
+  img.destroy();
+}
+
+/** 고른 쪽들을 마지막 고른 쪽 바로 뒤에 복사한다 */
+function duplicatePages(indices: number[]) {
+  const d = requireDoc();
+  const copy = mupdf.Document.openDocument(snapshot(), 'application/pdf') as mupdf.PDFDocument;
+  const sorted = [...indices].sort((a, b) => a - b);
+  const at = sorted[sorted.length - 1] + 1;
+  const map = d.newGraftMap();
+  sorted.forEach((idx, k) => map.graftPage(at + k, copy, idx));
+  map.destroy();
+  copy.destroy();
+}
+
+/** 고른 쪽만 새 PDF로 */
+function extractPages(indices: number[]) {
+  const out = new mupdf.PDFDocument();
+  const map = out.newGraftMap();
+  [...indices].sort((a, b) => a - b).forEach((idx) => map.graftPage(-1, requireDoc(), idx));
+  map.destroy();
+  const bytes = out.saveToBuffer('garbage,compress').asUint8Array().slice();
+  out.destroy();
+  return bytes;
+}
+
 const handlers: Record<string, (args: any) => any> = {
   open({ bytes, password }: { bytes: Uint8Array; password?: string }) {
     const d = mupdf.Document.openDocument(bytes, 'application/pdf');
@@ -102,12 +168,31 @@ const handlers: Record<string, (args: any) => any> = {
     redoStack.length = 0;
     return { pages: pageInfos() };
   },
+  /** 빈 새 문서 (사진만으로 PDF를 만들 때) */
+  newDoc: () => { doc?.destroy(); doc = new mupdf.PDFDocument(); undoStack.length = 0; redoStack.length = 0; return { pages: pageInfos() }; },
   pages: () => pageInfos(),
   render: ({ index, scale, rotate }) => render(index, scale, rotate),
   renderPng: ({ index, scale, rotate }) => renderPng(index, scale, rotate),
   rotate: ({ indices, delta }) => { remember(); rotatePages(indices, delta); return { pages: pageInfos(), ...history() }; },
   delete: ({ indices }) => { remember(); deletePages(indices); return { pages: pageInfos(), ...history() }; },
   move: ({ order }: { order: number[] }) => { remember(); requireDoc().rearrangePages(order); return { pages: pageInfos(), ...history() }; },
+  insertBlank: ({ at, width, height }) => { remember(); insertBlank(clampAt(at), width, height); return { pages: pageInfos(), ...history() }; },
+  insertFile: ({ at: want, bytes, kind }: { at: number; bytes: Uint8Array; kind: 'pdf' | 'image' }) => {
+    const at = clampAt(want);
+    const before = snapshot();
+    let count = 1;
+    if (kind === 'pdf') {
+      const r = insertPdf(at, bytes);
+      if (r.needsPassword) return { needsPassword: true, pages: pageInfos(), ...history() };
+      count = r.count;
+    } else insertImage(at, bytes);
+    undoStack.push(before);
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack.length = 0;
+    return { count, at, pages: pageInfos(), ...history() };
+  },
+  duplicate: ({ indices }) => { remember(); duplicatePages(indices); return { pages: pageInfos(), ...history() }; },
+  extract: ({ indices }) => extractPages(indices),
   lines: ({ index }) => readLines(requireDoc(), index),
   replace: async (req: ReplaceRequest) => { remember(); await replaceText(requireDoc(), req); return { pages: pageInfos(), ...history() }; },
   undo: () => { const b = undoStack.pop(); if (b) { redoStack.push(snapshot()); reopen(b); } return { pages: pageInfos(), ...history() }; },

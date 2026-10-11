@@ -16,7 +16,7 @@ interface Props {
 const QUICK: { id: QuickAction; icon: string; title: string; sub: string; ready: boolean }[] = [
   { id: 'edit', icon: 'edit', title: '글자 고치기', sub: '원래 모양 그대로', ready: true },
   { id: 'sign', icon: 'sign', title: '서명·직인', sub: '한 번 그리면 계속', ready: false },
-  { id: 'merge', icon: 'merge', title: '합치기', sub: '여러 파일을 하나로', ready: false },
+  { id: 'merge', icon: 'merge', title: '합치기', sub: 'PDF·사진을 하나로', ready: true },
   { id: 'pages', icon: 'pages', title: '페이지 정리', sub: '순서·회전·삭제', ready: true },
   { id: 'print', icon: 'print', title: '인쇄', sub: '선명하게, 원하는 쪽만', ready: true },
   { id: 'privacy', icon: 'shield', title: '개인정보 지우기', sub: '흔적 없이 완전히', ready: false },

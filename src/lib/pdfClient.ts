@@ -36,12 +36,20 @@ export class PdfClient {
     const copy = bytes.slice();
     return this.call<{ pages?: PageInfo[]; needsPassword?: boolean; wrongPassword?: boolean }>('open', { bytes: copy, password }, [copy.buffer]);
   }
+  newDoc() { return this.call<{ pages: PageInfo[] }>('newDoc'); }
   pages() { return this.call<PageInfo[]>('pages'); }
   render(index: number, scale: number, rotate = 0) { return this.call<RenderResult>('render', { index, scale, rotate }); }
   renderPng(index: number, scale: number, rotate = 0) { return this.call<Uint8Array>('renderPng', { index, scale, rotate }); }
   rotate(indices: number[], delta: number) { return this.call<EditResult>('rotate', { indices, delta }); }
   delete(indices: number[]) { return this.call<EditResult>('delete', { indices }); }
   move(order: number[]) { return this.call<EditResult>('move', { order }); }
+  insertBlank(at: number, width: number, height: number) { return this.call<EditResult>('insertBlank', { at, width, height }); }
+  insertFile(at: number, bytes: Uint8Array, kind: 'pdf' | 'image') {
+    const copy = bytes.slice();
+    return this.call<EditResult & { count: number; at: number; needsPassword?: boolean }>('insertFile', { at, bytes: copy, kind }, [copy.buffer]);
+  }
+  duplicate(indices: number[]) { return this.call<EditResult>('duplicate', { indices }); }
+  extract(indices: number[]) { return this.call<Uint8Array>('extract', { indices }); }
   lines(index: number) { return this.call<TextLine[]>('lines', { index }); }
   replace(req: ReplaceRequest) { return this.call<EditResult>('replace', req); }
   undo() { return this.call<EditResult>('undo'); }

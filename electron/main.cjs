@@ -92,6 +92,19 @@ ipcMain.handle('open-file', async () => {
   return { name: path.basename(r.filePaths[0]), bytes: new Uint8Array(bytes), path: r.filePaths[0] };
 });
 
+// 쪽 넣기·합치기용: PDF와 사진을 여러 개 고른다
+ipcMain.handle('open-files', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: '넣을 파일 고르기',
+    filters: [{ name: 'PDF·사진', extensions: ['pdf', 'jpg', 'jpeg', 'png'] }],
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (r.canceled) return [];
+  const out = [];
+  for (const p of r.filePaths) out.push({ name: path.basename(p), bytes: new Uint8Array(await fs.readFile(p)), path: p });
+  return out;
+});
+
 // 최근 문서: 사용자 폴더의 recent.json 에 경로·이름·쪽수만 기록한다 (파일 내용은 저장하지 않음)
 const RECENT = () => path.join(app.getPath('userData'), 'recent.json');
 async function readRecent() {

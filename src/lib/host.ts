@@ -20,6 +20,7 @@ export interface RecentFile {
 
 interface AppBridge {
   openFile(): Promise<OpenedFile | null>;
+  openFiles(): Promise<OpenedFile[]>;
   saveFile(name: string, bytes: Uint8Array): Promise<string | null>;
   print(title: string, pages: PrintPage[]): Promise<{ ok: boolean; reason?: string }>;
   onOpenPath(cb: (file: OpenedFile) => void): void;
@@ -51,6 +52,22 @@ export function openFile(): Promise<OpenedFile | null> {
     input.click();
   });
 }
+
+/** PDF와 사진을 여러 개 고른다 (쪽 넣기·합치기) */
+export function openFiles(): Promise<OpenedFile[]> {
+  if (window.sowuju) return window.sowuju.openFiles();
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'application/pdf,.pdf,image/jpeg,image/png';
+    input.onchange = async () => resolve(await Promise.all([...(input.files ?? [])].map(readDropped)));
+    input.click();
+  });
+}
+
+export const fileKind = (f: { name: string }): 'pdf' | 'image' | null =>
+  /\.pdf$/i.test(f.name) ? 'pdf' : /\.(jpe?g|png)$/i.test(f.name) ? 'image' : null;
 
 /** 끌어다 놓은 파일 읽기 */
 export async function readDropped(f: File): Promise<OpenedFile> {

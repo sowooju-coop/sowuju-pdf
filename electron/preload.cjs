@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, webUtils, webFrame } = require('electron');
 
 contextBridge.exposeInMainWorld('sowuju', {
   openFile: () => ipcRenderer.invoke('open-file'),
+  openFiles: () => ipcRenderer.invoke('open-files'),
   saveFile: (name, bytes) => ipcRenderer.invoke('save-file', name, bytes),
   print: (title, pages) => ipcRenderer.invoke('print', title, pages),
   onOpenPath: (cb) => ipcRenderer.on('open-path', (_e, file) => cb(file)),
