@@ -20,3 +20,38 @@ export interface RenderResult {
   height: number;
   pixels: Uint8ClampedArray;
 }
+
+export interface TextChar {
+  c: string;
+  /** 글자 기준점(왼쪽 아래 기준선) */
+  x: number;
+  y: number;
+  size: number;
+  quad: [number, number, number, number, number, number, number, number];
+  color: [number, number, number];
+  font: string;
+  bold: boolean;
+  serif: boolean;
+}
+
+export interface TextLine {
+  bbox: [number, number, number, number];
+  /** 글자가 나아가는 방향 (가로쓰기면 [1, 0]) */
+  dir: [number, number];
+  chars: TextChar[];
+}
+
+export interface ReplaceRequest {
+  page: number;
+  /** 파일에서 지울 글자 상자 */
+  remove: TextChar['quad'][];
+  /** 새로 쓸 글자 (비어 있으면 지우기만) */
+  text: string;
+  x: number;
+  y: number;
+  dir: [number, number];
+  size: number;
+  spacing: number;
+  color: [number, number, number];
+  fontFile: string;
+}

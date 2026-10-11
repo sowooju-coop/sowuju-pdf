@@ -9,6 +9,9 @@ const PATHS: Record<string, string> = {
   down: 'M12 5v14M6 13l6 6 6-6',
   zoomin: 'M8 11h6M11 8v6M16 16l4.5 4.5M17.5 11a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0z',
   zoomout: 'M8 11h6M16 16l4.5 4.5M17.5 11a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0z',
+  edit: 'M4 7V5h10v2M9 5v11M7 16h4M13 20l6.5-6.5 2 2L15 22h-2z',
+  undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
+  redo: 'm15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
   fit: 'M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3M4 4v4M20 4v4M4 16v4M20 16v4',
 };
 

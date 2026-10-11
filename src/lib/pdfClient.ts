@@ -1,4 +1,6 @@
-import type { PageInfo, RenderResult, WorkerRequest, WorkerResponse } from './protocol';
+import type { PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+
+export interface EditResult { pages: PageInfo[]; canUndo: boolean; canRedo: boolean }
 
 /** MuPDF 작업 스레드와 주고받는 얇은 창구. 요청마다 번호를 붙여 응답을 짝지어 준다. */
 export class PdfClient {
@@ -37,8 +39,12 @@ export class PdfClient {
   pages() { return this.call<PageInfo[]>('pages'); }
   render(index: number, scale: number, rotate = 0) { return this.call<RenderResult>('render', { index, scale, rotate }); }
   renderPng(index: number, scale: number, rotate = 0) { return this.call<Uint8Array>('renderPng', { index, scale, rotate }); }
-  rotate(indices: number[], delta: number) { return this.call<PageInfo[]>('rotate', { indices, delta }); }
-  delete(indices: number[]) { return this.call<PageInfo[]>('delete', { indices }); }
-  move(order: number[]) { return this.call<PageInfo[]>('move', { order }); }
+  rotate(indices: number[], delta: number) { return this.call<EditResult>('rotate', { indices, delta }); }
+  delete(indices: number[]) { return this.call<EditResult>('delete', { indices }); }
+  move(order: number[]) { return this.call<EditResult>('move', { order }); }
+  lines(index: number) { return this.call<TextLine[]>('lines', { index }); }
+  replace(req: ReplaceRequest) { return this.call<EditResult>('replace', req); }
+  undo() { return this.call<EditResult>('undo'); }
+  redo() { return this.call<EditResult>('redo'); }
   save() { return this.call<Uint8Array>('save'); }
 }

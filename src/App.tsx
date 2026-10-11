@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PdfClient } from './lib/pdfClient';
-import type { PageInfo } from './lib/protocol';
+import { PdfClient, type EditResult } from './lib/pdfClient';
+import type { PageInfo, ReplaceRequest } from './lib/protocol';
+import { FONTS, loadFonts, type FontFamily } from './lib/fonts';
+import type { EditStyle } from './lib/textDiff';
+import { EditLayer, type EditingState } from './components/EditLayer';
 import { isApp, openFile, printPages, saveFile, type PrintPage } from './lib/host';
 import { PageCanvas } from './components/PageCanvas';
 import { Icon } from './components/Icon';
@@ -26,6 +29,11 @@ export default function App() {
   const [pw, setPw] = useState<{ name: string; bytes: Uint8Array; wrong: boolean } | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const [hist, setHist] = useState({ canUndo: false, canRedo: false });
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [styleOverride, setStyleOverride] = useState<EditStyle | null>(null);
+  useEffect(() => { loadFonts(); }, []);
   const viewer = useRef<HTMLDivElement | null>(null);
   const [viewerEl, setViewerEl] = useState<HTMLDivElement | null>(null);
   const lastClick = useRef<number | null>(null);
@@ -58,6 +66,7 @@ export default function App() {
       setSel(new Set());
       setCur(0);
       setDirty(false);
+      setHist({ canUndo: false, canRedo: false });
       setRev((v) => v + 1);
       viewer.current?.scrollTo(0, 0);
       requestAnimationFrame(() => fitWidth(r.pages!, true));
@@ -89,11 +98,22 @@ export default function App() {
 
   const targets = useCallback((): number[] => (sel.size ? [...sel].sort((a, b) => a - b) : doc ? [cur] : []), [sel, cur, doc]);
 
-  const applyPages = useCallback((pages: PageInfo[]) => {
-    setDoc((d) => (d ? { ...d, pages } : d));
+  const applyPages = useCallback((r: EditResult) => {
+    setDoc((d) => (d ? { ...d, pages: r.pages } : d));
+    setHist({ canUndo: r.canUndo, canRedo: r.canRedo });
     setRev((v) => v + 1);
     setDirty(true);
   }, []);
+
+  const replace = useCallback(async (req: ReplaceRequest) => {
+    setBusy('글자 바꾸는 중…');
+    try { applyPages(await client.replace(req)); }
+    catch (e) { say(`글자를 바꾸지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, applyPages, say]);
+
+  const undo = useCallback(async () => { if (hist.canUndo) applyPages(await client.undo()); }, [client, hist, applyPages]);
+  const redo = useCallback(async () => { if (hist.canRedo) applyPages(await client.redo()); }, [client, hist, applyPages]);
 
   const rotate = useCallback(async (delta: number) => {
     const t = targets();
@@ -195,6 +215,10 @@ export default function App() {
       if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); doOpen(); }
       else if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); }
       else if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
+      else if ((e.target as HTMLElement).isContentEditable) return;
+      else if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+      else if (!mod && e.key.toLowerCase() === 'e' && doc) { setMode((m) => (m === 'edit' ? 'view' : 'edit')); }
       else if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom((z) => clamp(z * 1.2, 0.25, 4)); }
       else if (mod && e.key === '-') { e.preventDefault(); setZoom((z) => clamp(z / 1.2, 0.25, 4)); }
       else if (e.key === 'Escape') { setPrintOpen(false); }
@@ -213,7 +237,7 @@ export default function App() {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc]);
+  }, [doOpen, doSave, load, doc, undo, redo]);
 
   useEffect(() => { window.sowuju?.onOpenPath((f) => load(f.name, f.bytes)); }, [load]);
 
@@ -230,6 +254,13 @@ export default function App() {
             <button className="tb" onClick={() => setPrintOpen(true)} disabled={!doc} title="인쇄 (Ctrl+P)"><Icon name="print" /><span>인쇄</span></button>
           </div>
           <div className="grp">
+            <button className={`tb${mode === 'edit' ? ' on' : ''}`} onClick={() => setMode((m) => (m === 'edit' ? 'view' : 'edit'))} disabled={!doc} title="글자 수정 (E)"><Icon name="edit" /><span>글자 수정</span></button>
+          </div>
+          <div className="grp">
+            <button className="tb" onClick={undo} disabled={!hist.canUndo} title="실행 취소 (Ctrl+Z)"><Icon name="undo" /><span>취소</span></button>
+            <button className="tb" onClick={redo} disabled={!hist.canRedo} title="다시 실행 (Ctrl+Shift+Z)"><Icon name="redo" /><span>다시</span></button>
+          </div>
+          <div className="grp">
             <button className="tb" onClick={() => setZoom((z) => clamp(z / 1.2, 0.25, 4))} disabled={!doc} title="축소"><Icon name="zoomout" /><span>축소</span></button>
             <div className="zoomv">{Math.round(zoom * 100)}%</div>
             <button className="tb" onClick={() => setZoom((z) => clamp(z * 1.2, 0.25, 4))} disabled={!doc} title="확대"><Icon name="zoomin" /><span>확대</span></button>
@@ -238,6 +269,23 @@ export default function App() {
         </div>
         {doc && <div className="docname" title={doc.name}>{doc.name}{dirty ? ' · 수정됨' : ''}</div>}
       </header>
+      {mode === 'edit' && doc && (
+        <div className="ctx" onMouseDown={(e) => { if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }}>
+          {editing ? (
+            <>
+              <span className="lbl">글꼴</span>
+              {(Object.keys(FONTS) as FontFamily[]).map((f) => {
+                const cur = styleOverride ?? editing.style;
+                return <button key={f} className={`btn${cur.family === f ? ' on' : ''}`} onClick={() => setStyleOverride({ ...cur, family: f })}>{FONTS[f].label}</button>;
+              })}
+              <button className={`btn${(styleOverride ?? editing.style).bold ? ' on' : ''}`} onClick={() => { const cur = styleOverride ?? editing.style; setStyleOverride({ ...cur, bold: !cur.bold }); }}><b>굵게</b></button>
+              <span className="hint">Enter로 적용, Esc로 취소. 원래 글꼴에 맞춰 자동으로 골랐어요.</span>
+            </>
+          ) : (
+            <span className="hint">점선 상자를 누르면 그 줄을, 글자 위를 끌면 고른 부분만 고쳐요. 바뀐 글자만 파일에서 지우고 같은 자리에 새로 써요.</span>
+          )}
+        </div>
+      )}
 
       <div className="main">
         <aside className="side" aria-label="페이지 목록">
@@ -265,6 +313,14 @@ export default function App() {
               {doc.pages.map((p, i) => (
                 <div key={i} className="page" data-n={`${i + 1} / ${doc.pages.length}`}>
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev} root={viewerEl} className="sheet" />
+                  {mode === 'edit' && (
+                    <EditLayer
+                      client={client} index={i} info={p} zoom={zoom} rev={rev}
+                      onReplace={replace} onMessage={say}
+                      onEditing={(s) => { setEditing(s); setStyleOverride(null); }}
+                      styleOverride={editing?.page === i ? styleOverride : null}
+                    />
+                  )}
                 </div>
               ))}
             </div>
