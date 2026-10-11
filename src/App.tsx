@@ -5,6 +5,8 @@ import { FONTS, loadFonts } from './lib/fonts';
 import type { EditStyle } from './lib/textDiff';
 import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, setUiZoom, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
 import { PageRail } from './components/PageRail';
+import { PageGrid } from './components/PageGrid';
+import { PageMenu, type PageActions, type PageMenuState } from './components/PageMenu';
 import { EditLayer, type EditingState } from './components/EditLayer';
 import { PageCanvas } from './components/PageCanvas';
 import { Icon, Logo } from './components/Icon';
@@ -56,6 +58,9 @@ export default function App() {
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [tab, setTab] = useState<Tab>('edit');
+  const [overview, setOverview] = useState(false);
+  const [gridSize, setGridSize] = useState(170);
+  const [gridMenu, setGridMenu] = useState<PageMenuState | null>(null);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [hist, setHist] = useState({ canUndo: false, canRedo: false });
   const [log, setLog] = useState<{ done: HistItem[]; undone: HistItem[] }>({ done: [], undone: [] });
@@ -110,6 +115,7 @@ export default function App() {
       pendingAction.current = undefined;
       setMode(act === 'edit' ? 'edit' : 'view');
       setTab(act === 'pages' ? 'page' : 'edit');
+      setOverview(act === 'pages');
       if (act === 'print') setPrintOpen(true);
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
       return true;
@@ -173,7 +179,7 @@ export default function App() {
     } else {
       const r = await client.newDoc();
       setDoc({ name: '새 문서.pdf', size: 0, pages: r.pages });
-      setDirty(true); setSavedAt(null); setHist({ canUndo: false, canRedo: false }); setLog({ done: [], undone: [] }); setMode('view'); setTab('page');
+      setDirty(true); setSavedAt(null); setHist({ canUndo: false, canRedo: false }); setLog({ done: [], undone: [] }); setMode('view'); setTab('page'); setOverview(false);
       await insertFiles(0, files);
       requestAnimationFrame(() => setTimeout(() => fitWidthRef.current(), 50));
     }
@@ -361,10 +367,11 @@ export default function App() {
       lastClick.current = i;
     } else {
       s.clear();
+      s.add(i);
       lastClick.current = i;
     }
     setSel(s);
-    goTo(i);
+    if (!overview) goTo(i); else setCur(i);
   };
 
   // 단축키, 끌어다 놓기, 설치형에서 파일 연결로 열기
@@ -415,6 +422,15 @@ export default function App() {
   const edits = log.done.filter((h) => h.kind === 'text');
   const curStyle = editing ? styleOverride ?? editing.style : null;
   const soon = '다음 버전에서 추가돼요';
+  const pageActions: PageActions = {
+    targetsFor: (i) => (sel.has(i) ? [...sel].sort((a, b) => a - b) : [i]),
+    onInsertBlank: insertBlank,
+    onPickFiles: pickFiles,
+    onDuplicate: duplicate,
+    onRotate: (idx, d) => rotate(d, idx),
+    onExtract: extract,
+    onDelete: remove,
+  };
 
   if (!doc) {
     return (
@@ -463,7 +479,7 @@ export default function App() {
       <div className="toolbar" role="toolbar" aria-label="도구">
         <div className="menutabs" role="tablist" aria-label="메뉴">
           {TABS.map((t) => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>
+            <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => { setTab(t.id); if (t.id !== 'page') setOverview(false); }}>{t.label}</button>
           ))}
         </div>
         <span className="vsep" aria-hidden="true" />
@@ -479,7 +495,7 @@ export default function App() {
         )}
         {tab === 'edit' && (
           <div className="tools">
-            {tool('edit', '글자 고치기', () => setMode((m) => (m === 'edit' ? 'view' : 'edit')), { on: mode === 'edit', title: '글자 고치기 (E)' })}
+            {tool('edit', '글자 고치기', () => { setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
             {tool('text', '글자 추가')}
             {tool('image', '그림')}
             <span className="vsep" aria-hidden="true" />
@@ -493,6 +509,8 @@ export default function App() {
         )}
         {tab === 'page' && (
           <div className="tools">
+            {tool('pages', '한눈에 보기', () => { setOverview((o) => !o); setMode('view'); }, { on: overview, title: '모든 쪽을 펼쳐 놓고 끌어서 순서 바꾸기' })}
+            <span className="vsep" aria-hidden="true" />
             {tool('plus', '빈 쪽 넣기', () => insertBlank((sel.size ? Math.max(...sel) : cur) + 1), { title: '지금 보는 쪽 뒤에 빈 쪽 넣기' })}
             {tool('merge', '파일에서 넣기', () => pickFiles((sel.size ? Math.max(...sel) : cur) + 1), { title: '다른 PDF나 사진을 지금 보는 쪽 뒤에 넣기' })}
             {tool('pages', '복제', () => duplicate())}
@@ -523,22 +541,31 @@ export default function App() {
       </div>
 
       <div className="work">
-        <PageRail
-          client={client} pages={doc.pages} rev={rev} cur={cur} sel={sel}
-          onThumb={onThumb}
-          targetsFor={(i) => (sel.has(i) ? [...sel].sort((a, b) => a - b) : [i])}
-          onReorder={reorder}
-          onInsertBlank={insertBlank}
-          onPickFiles={pickFiles}
-          onInsertFiles={insertFiles}
-          onDuplicate={duplicate}
-          onRotate={(idx, d) => rotate(d, idx)}
-          onExtract={extract}
-          onDelete={remove}
-        />
+        <PageRail client={client} pages={doc.pages} rev={rev} cur={cur} sel={sel} onThumb={onThumb} onReorder={reorder} onInsertFiles={insertFiles} {...pageActions} />
 
         <main className="stage">
-          <div className="viewer" ref={(el) => { viewer.current = el; if (el !== viewerEl) setViewerEl(el); }}>
+          {overview && (
+            <>
+              <PageGrid
+                client={client} pages={doc.pages} rev={rev} cur={cur} sel={sel} size={gridSize}
+                onThumb={(i, e) => { if (i < 0) { setSel(new Set()); return; } onThumb(i, e); }}
+                onOpenPage={(i) => { setOverview(false); requestAnimationFrame(() => goToRef.current(i)); }}
+                onReorder={reorder}
+                onInsertBlank={insertBlank}
+                onContext={(i, x, y) => setGridMenu({ i, x, y })}
+              />
+              <div className="floatnav">
+                <span className="pn">{sel.size ? `${sel.size}쪽 골랐어요` : `모두 ${doc.pages.length}쪽`}</span>
+                <span className="vsep" aria-hidden="true" />
+                <button aria-label="작게 보기" onClick={() => setGridSize((g) => clamp(g - 30, 100, 290))}><Icon name="minus" size={16} /></button>
+                <span className="zv">크기</span>
+                <button aria-label="크게 보기" onClick={() => setGridSize((g) => clamp(g + 30, 100, 290))}><Icon name="plus" size={16} /></button>
+                <button className="txt" onClick={() => setOverview(false)}>한 쪽씩 보기</button>
+              </div>
+              <PageMenu menu={gridMenu} onClose={() => setGridMenu(null)} actions={pageActions} />
+            </>
+          )}
+          <div className="viewer" hidden={overview} ref={(el) => { viewer.current = el; if (el !== viewerEl) setViewerEl(el); }}>
             <div className={`pages${mode === 'edit' ? ' editing' : ''}`}>
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
@@ -558,14 +585,14 @@ export default function App() {
               ))}
             </div>
           </div>
-          {mode === 'edit' && (
+          {mode === 'edit' && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               <span><b>글자 고치는 중</b><span className="muted"> · 줄을 누르거나 글자 위를 끌어서 고르세요</span></span>
               <button onClick={() => setMode('view')}>끝내기</button>
             </div>
           )}
-          <div className="floatnav">
+          <div className="floatnav" hidden={overview}>
             <button aria-label="이전 쪽" onClick={() => goTo(cur - 1)} disabled={cur === 0}><Icon name="left" size={16} /></button>
             <span className="pn"><b>{cur + 1}</b> <span className="muted">/ {doc.pages.length}</span></span>
             <button aria-label="다음 쪽" onClick={() => goTo(cur + 1)} disabled={cur >= doc.pages.length - 1}><Icon name="right" size={16} /></button>

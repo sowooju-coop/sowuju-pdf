@@ -19,6 +19,7 @@
 *{box-sizing:border-box}
 html,body,#root{height:100%;margin:0}
 body{background:var(--ground);color:var(--ink);font-family:var(--ui);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
 button,input{font:inherit;color:inherit}
 button{cursor:pointer}
 button:disabled{cursor:default}
@@ -157,7 +158,7 @@ button:disabled{cursor:default}
 .tool:disabled{color:#AEB7C0}
 .tools .hint{margin-left:12px;font-size:12.5px;color:var(--muted);white-space:nowrap}
 .work{flex:1;min-height:0;display:flex}
-.rail{width:156px;flex:none;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 0 60px;transition:background .15s}
+.rail{position:relative;width:156px;flex:none;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 0 60px;transition:background .15s}
 .rail.fileover{background:rgba(15,118,110,.06);box-shadow:inset 0 0 0 2px rgba(15,118,110,.35)}
 .slotwrap{display:flex;flex-direction:column;align-items:center}
 .gap{width:120px;height:14px;margin:-7px 0;position:relative;border:0;background:transparent;opacity:0;z-index:1}
@@ -266,3 +267,29 @@ button:disabled{cursor:default}
 .toast.show{opacity:1}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 @media (max-width:1100px){.inspector{display:none}.quick{grid-template-columns:repeat(3,minmax(0,1fr))}.recent{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* 끌어서 순서 바꾸기 */
+body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
+.sortline{position:absolute;z-index:5;border-radius:2px;background:var(--teal);box-shadow:0 0 0 3px rgba(15,118,110,.18);pointer-events:none}
+.sortghost{position:fixed;z-index:90;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 10px;border-radius:10px;background:var(--ink);color:#fff;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(15,27,42,.3);pointer-events:none;white-space:nowrap}
+.sg-pages{position:relative;width:18px;height:22px}
+.sg-pages i{position:absolute;width:14px;height:18px;border-radius:2px;background:#fff}
+.sg-pages i:first-child{left:4px;top:0;opacity:.5}
+.sg-pages i:last-child{left:0;top:4px}
+.thumb.dragging,.gcell.dragging{opacity:.35}
+
+/* 한눈에 보기 */
+.pagegrid{flex:1;position:relative;overflow:auto;padding:28px 32px 110px}
+.gridinner{display:grid;gap:20px 12px;align-items:end}
+.gcell{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;padding:10px 8px;border:0;border-radius:12px;background:transparent;cursor:grab}
+.gcell:hover{background:rgba(255,255,255,.65)}
+.gcell.sel{background:var(--teal-tint)}
+.gpage{display:block;background:#fff;border-radius:3px;box-shadow:0 1px 3px rgba(15,27,42,.14),0 6px 16px rgba(15,27,42,.06)}
+.gpage .tbox{box-shadow:none}
+.gcell.cur .gpage{box-shadow:0 0 0 2px var(--teal),0 6px 16px rgba(15,118,110,.18)}
+.gnum{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gcell.cur .gnum,.gcell.sel .gnum{color:var(--teal);font-weight:700}
+.gadd{cursor:pointer;justify-content:center}
+.gaddin{width:70%;aspect-ratio:1/1.414;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1.5px dashed #B9C6CF;border-radius:6px;color:var(--muted);font-size:13px}
+.gadd:hover .gaddin{border-color:var(--teal);color:var(--teal)}
+.thumb{cursor:grab}

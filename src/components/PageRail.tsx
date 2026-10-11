@@ -1,51 +1,40 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { PdfClient } from '../lib/pdfClient';
 import type { PageInfo } from '../lib/protocol';
 import { fileKind, readDropped, type OpenedFile } from '../lib/host';
 import { PageCanvas } from './PageCanvas';
+import { reorderFor, useSortable } from '../lib/useSortable';
+import { SortOverlay } from './SortGhost';
+import { PageMenu, type PageActions, type PageMenuState } from './PageMenu';
 import { Icon } from './Icon';
 
-interface Props {
+interface Props extends PageActions {
   client: PdfClient;
   pages: PageInfo[];
   rev: number;
   cur: number;
   sel: Set<number>;
   onThumb: (i: number, e: React.MouseEvent) => void;
-  /** 고른 쪽들(없으면 i 한 쪽)을 대상으로 */
-  targetsFor: (i: number) => number[];
   onReorder: (order: number[]) => void;
-  onInsertBlank: (at: number) => void;
-  onPickFiles: (at: number) => void;
   onInsertFiles: (at: number, files: OpenedFile[]) => void;
-  onDuplicate: (idx: number[]) => void;
-  onRotate: (idx: number[], delta: number) => void;
-  onExtract: (idx: number[]) => void;
-  onDelete: (idx: number[]) => void;
 }
 
-interface Menu { x: number; y: number; i: number }
 
 const thumbZoom = (p: PageInfo) => Math.min(96 / p.width, 136 / p.height);
 
 /** 왼쪽 쪽 목록: 끌어서 순서 바꾸기, 오른쪽 클릭 메뉴, 쪽 사이 + 단추, 파일 끌어다 넣기 */
 export function PageRail(props: Props) {
   const { client, pages, rev, cur, sel, onThumb, targetsFor } = props;
-  const [drag, setDrag] = useState<number[] | null>(null);
-  /** 끼워 넣을 자리: 0이면 맨 앞, n이면 n번째 쪽 뒤 */
+  /** 파일을 끌어다 넣을 자리: 0이면 맨 앞, n이면 n번째 쪽 뒤 */
   const [dropAt, setDropAt] = useState<number | null>(null);
   const [fileOver, setFileOver] = useState(false);
-  const [menu, setMenu] = useState<Menu | null>(null);
+  const [menu, setMenu] = useState<PageMenuState | null>(null);
   const rail = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', close);
-    window.addEventListener('resize', close);
-    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close); window.removeEventListener('resize', close); };
-  }, [menu]);
+  const sort = useSortable({
+    container: rail, count: pages.length, selected: sel, layout: 'list',
+    onDrop: (moving, slot) => { const order = reorderFor(pages.length, moving, slot); if (order) props.onReorder(order); },
+  });
+  const dragging = sort.state?.moving;
 
   /** 마우스 위치로 끼워 넣을 자리 계산 */
   const slotAt = (e: React.DragEvent) => {
@@ -58,12 +47,11 @@ export function PageRail(props: Props) {
   };
 
   const onDragOver = (e: React.DragEvent) => {
-    const files = [...e.dataTransfer.types].includes('Files');
-    if (!drag && !files) return;
+    if (![...e.dataTransfer.types].includes('Files')) return;
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = files ? 'copy' : 'move';
-    setFileOver(files);
+    e.dataTransfer.dropEffect = 'copy';
+    setFileOver(true);
     setDropAt(slotAt(e));
   };
 
@@ -73,24 +61,9 @@ export function PageRail(props: Props) {
     const at = dropAt ?? pages.length;
     setDropAt(null);
     setFileOver(false);
-    if (drag) {
-      const moving = drag;
-      setDrag(null);
-      const rest = pages.map((_, i) => i).filter((i) => !moving.includes(i));
-      const before = moving.filter((i) => i < at).length;
-      rest.splice(at - before, 0, ...moving);
-      if (rest.some((v, i) => v !== i)) props.onReorder(rest);
-      return;
-    }
     const files = [...e.dataTransfer.files].filter((f) => fileKind(f));
     if (files.length) props.onInsertFiles(at, await Promise.all(files.map(readDropped)));
   };
-
-  const item = (icon: string, label: string, run: () => void, danger = false) => (
-    <button role="menuitem" className={danger ? 'danger' : ''} onPointerDown={(e) => e.stopPropagation()} onClick={() => { setMenu(null); run(); }}>
-      <Icon name={icon} size={16} />{label}
-    </button>
-  );
 
   return (
     <aside
@@ -114,15 +87,11 @@ export function PageRail(props: Props) {
             onClick={() => props.onInsertBlank(i)}
           ><span><Icon name="plus" size={12} /></span></button>
           <button
-            className={`thumb${sel.has(i) ? ' sel' : ''}${cur === i ? ' cur' : ''}${drag?.includes(i) ? ' dragging' : ''}`}
-            draggable
-            onDragStart={(e) => {
-              const t = sel.has(i) ? [...sel].sort((a, b) => a - b) : [i];
-              setDrag(t);
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('text/plain', t.join(','));
-            }}
-            onDragEnd={() => { setDrag(null); setDropAt(null); }}
+            className={`thumb${sel.has(i) ? ' sel' : ''}${cur === i ? ' cur' : ''}${dragging?.includes(i) ? ' dragging' : ''}`}
+            data-sort-index={i}
+            draggable={false}
+            onPointerDown={sort.start(i)}
+            title="끌어서 순서를 바꿀 수 있어요"
             onClick={(e) => onThumb(i, e)}
             onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, i }); }}
             aria-label={`${i + 1}쪽`}
@@ -141,23 +110,9 @@ export function PageRail(props: Props) {
       ><span><Icon name="plus" size={12} /></span></button>
       <button className="railadd" onClick={() => props.onPickFiles(pages.length)}><Icon name="plus" size={16} />파일에서 쪽 넣기</button>
 
-      {menu && (() => {
-        const t = targetsFor(menu.i);
-        const many = t.length > 1 ? `${t.length}쪽 ` : '';
-        return (
-          <div role="menu" className="ctxmenu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 330) }} onPointerDown={(e) => e.stopPropagation()}>
-            {item('plus', '뒤에 빈 쪽 넣기', () => props.onInsertBlank(menu.i + 1))}
-            {item('merge', '뒤에 파일에서 쪽 넣기…', () => props.onPickFiles(menu.i + 1))}
-            {item('pages', `${many}복제`, () => props.onDuplicate(t))}
-            <hr />
-            {item('rotl', '왼쪽으로 돌리기', () => props.onRotate(t, -90))}
-            {item('rotr', '오른쪽으로 돌리기', () => props.onRotate(t, 90))}
-            <hr />
-            {item('save', `${many}새 PDF로 저장…`, () => props.onExtract(t))}
-            {item('trash', `${many}지우기`, () => props.onDelete(t), true)}
-          </div>
-        );
-      })()}
+      <SortOverlay state={sort.state} />
+
+      <PageMenu menu={menu} onClose={() => setMenu(null)} actions={props} />
     </aside>
   );
 }
