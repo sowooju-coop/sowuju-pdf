@@ -1,12 +1,55 @@
 // 글자 읽기와 글자 바꾸기. 원래 글자는 redaction으로 파일에서 진짜로 지우고, 같은 자리에 새 글자를 쓴다.
 import * as mupdf from 'mupdf';
+import { isSerifName } from '../lib/fontClass';
 import type { NewText, TextLine, ReplaceRequest } from '../lib/protocol';
 import { addResource, appendContent, applyMatrix, num } from './pdfUtil';
 import { origByKey } from './origFont';
 
 /** 페이지의 글자를 줄 단위로, 글자마다 정확한 위치와 함께 읽는다 (좌표: 화면과 같은 페이지 공간, pt, 위가 0) */
+/** PDF 이름 객체의 원래 바이트를 글자로 (한글 문서는 글꼴 이름이 EUC-KR로 들어 있어 그냥 읽으면 깨진다) */
+function decodeName(obj: mupdf.PDFObject): string {
+  const raw = obj.toString(true, true).replace(/^\//, '');
+  const bytes: number[] = [];
+  raw.replace(/#([0-9A-Fa-f]{2})|[\s\S]/g, (m, h) => { bytes.push(h ? parseInt(h, 16) : m.charCodeAt(0) & 0xff); return ''; });
+  const u = new Uint8Array(bytes);
+  if (bytes.every((b) => b < 0x80)) return raw;
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(u); } catch { /* UTF-8이 아니면 EUC-KR */ }
+  try { return new TextDecoder('euc-kr').decode(u); } catch { return obj.asName(); }
+}
+
+/**
+ * 쪽에서 쓰는 글꼴마다 (MuPDF가 알려 주는 이름 → 명조인지).
+ * MuPDF의 isSerif()는 넣은 글꼴이면 늘 true라서 쓰지 않고, 원래 한글 이름과 글꼴 정보(Flags)로 가른다
+ */
+function serifMap(page: mupdf.PDFPage): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  const seen = new Set<number>();
+  const visit = (res: mupdf.PDFObject, depth: number) => {
+    if (res.isNull() || depth > 4) return;
+    const fonts = res.get('Font');
+    if (fonts.isDictionary()) fonts.forEach((v) => {
+      const f = v.resolve();
+      const bf = f.get('BaseFont');
+      if (!bf.isName()) return;
+      const desc = f.get('DescendantFonts').isArray() ? f.get('DescendantFonts').get(0).resolve() : f;
+      const flags = desc.get('FontDescriptor').get('Flags');
+      const flagSerif = flags.isNumber() ? (flags.asNumber() & 2) !== 0 : false;
+      out.set(bf.asName(), isSerifName(decodeName(bf)) ?? flagSerif);
+    });
+    const xo = res.get('XObject');
+    if (xo.isDictionary()) xo.forEach((v) => {
+      if (v.isIndirect()) { const n = v.asIndirect(); if (seen.has(n)) return; seen.add(n); }
+      const x = v.resolve();
+      if (x.get('Subtype').isName() && x.get('Subtype').asName() === 'Form') visit(x.get('Resources'), depth + 1);
+    });
+  };
+  try { visit(page.getObject().getInheritable('Resources'), 0); } catch { /* 자원이 이상해도 글자는 읽는다 */ }
+  return out;
+}
+
 export function readLines(doc: mupdf.PDFDocument, index: number): TextLine[] {
   const page = doc.loadPage(index);
+  const serifOf = serifMap(page);
   const st = page.toStructuredText('preserve-whitespace');
   const lines: TextLine[] = [];
   let cur: TextLine | null = null;
@@ -17,7 +60,7 @@ export function readLines(doc: mupdf.PDFDocument, index: number): TextLine[] {
     onChar(c, origin, font, size, quad, color) {
       cur?.chars.push({
         c, x: origin[0], y: origin[1], size, quad: [...quad] as mupdf.Quad,
-        color: toRgb(color), font: font.getName(), bold: font.isBold(), serif: font.isSerif(),
+        color: toRgb(color), font: font.getName(), bold: font.isBold(), serif: serifOf.get(font.getName()) ?? (isSerifName(font.getName()) ?? false),
       });
     },
     endLine() {

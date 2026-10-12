@@ -10,15 +10,12 @@ export function fontFile(family: FontFamily, bold: boolean) {
   return FONTS[family][bold ? 'bold' : 'regular'];
 }
 
-const SERIF = /batang|myeong|myung|mjo|명조|바탕|궁서|gungsuh|times|garamond|georgia|minion|mincho|songti|simsun|hymjre|hysmyeong|serif/i;
-const SANS = /gothic|dotum|돋움|고딕|malgun|sans|pretendard|arial|helvetica|nanumsquare|spoqa|gulim|굴림/i;
 const BOLD = /bold|black|heavy|extrab|semib|demib|[-,]b$/i;
 
 /** 원래 글꼴 정보로 고딕/명조와 굵기를 짐작한다 */
 export function guessFamily(name: string, serifFlag: boolean, boldFlag: boolean): { family: FontFamily; bold: boolean } {
-  const n = name.replace(/^[A-Z]{6}\+/, '');
-  const serif = !SANS.test(n) && (SERIF.test(n) || serifFlag);
-  return { family: serif ? 'serif' : 'sans', bold: boldFlag || BOLD.test(n) };
+  // serifFlag는 작업 스레드가 원래 한글 이름·글꼴 정보(Flags)로 미리 가른 값
+  return { family: serifFlag ? 'serif' : 'sans', bold: boldFlag || BOLD.test(name.replace(/^[A-Z]{6}\+/, '')) };
 }
 
 const ctx = document.createElement('canvas').getContext('2d')!;

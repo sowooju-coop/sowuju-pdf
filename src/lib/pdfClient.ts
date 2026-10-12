@@ -108,6 +108,8 @@ export class PdfClient {
   pageTitle(index: number) { return this.call<{ title: string; y: number } | null>('pageTitle', { index }); }
   /** 글자가 하나도 없는 쪽 (스캔한 쪽) */
   textless() { return this.call<number[]>('textless'); }
+  /** 글자 읽기용 그림 (흑백, 표 선 지움) */
+  renderOcr(index: number, scale: number) { return this.call<{ png: Uint8Array; table: boolean }>('renderOcr', { index, scale }); }
   ocrText(pages: { index: number; scale: number; words: OcrWord[] }[]) { return this.call<EditResult>('ocrText', { pages }); }
   pageNumbers(o: PageNumberOptions) { return this.call<EditResult>('pageNumbers', o); }
   watermark(o: WatermarkOptions) { return this.call<EditResult>('watermark', o); }

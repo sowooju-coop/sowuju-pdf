@@ -9,6 +9,7 @@ import { listFields, setField } from './forms';
 import { clearFindCache, findText, pageWords } from './find';
 import { addPageNumbers, addWatermark } from './pageStamp';
 import { addOcrText, textlessPages } from './ocrText';
+import { renderForOcr } from './ocrImage';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
@@ -322,6 +323,7 @@ const handlers: Record<string, (args: any) => any> = {
     return { ...history() };
   },
   textless: () => textlessPages(requireDoc()),
+  renderOcr: ({ index, scale }: { index: number; scale: number }) => renderForOcr(requireDoc(), index, scale),
   outline: () => getOutline(requireDoc()),
   setOutline: async ({ list }: { list: Bookmark[] }) => {
     await edit('목차', () => setOutline(requireDoc(), list));

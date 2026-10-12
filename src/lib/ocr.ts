@@ -1,45 +1,52 @@
 // 스캔 문서 글자 읽기(OCR). tesseract.js를 프로그램 안의 파일(public/ocr)로만 돌린다 — 인터넷으로 아무것도 보내거나 받지 않는다.
 // 그림 → 낱말과 위치를 읽는 일만 여기서 하고, PDF에 글자를 넣는 일은 PDF 작업 스레드가 한다.
-import { createScheduler, createWorker, OEM, PSM, type Scheduler } from 'tesseract.js';
+import { createWorker, OEM, PSM, type Worker } from 'tesseract.js';
 import type { OcrWord } from './protocol';
-
-let scheduler: Promise<Scheduler> | null = null;
 
 const base = () => new URL('ocr/', document.baseURI).href;
 
-/** 컴퓨터 성능에 맞춰 1~3개의 일꾼을 둔다 (한국어+영어) */
-function getScheduler() {
-  if (!scheduler) {
-    scheduler = (async () => {
-      const s = createScheduler();
-      const n = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
-      const make = async () => {
-        const w = await createWorker(['kor', 'eng'], OEM.LSTM_ONLY, {
-          workerPath: `${base()}worker.min.js`,
-          corePath: base(),
-          langPath: base().replace(/\/$/, ''),
-          cacheMethod: 'none',
-          workerBlobURL: false,
-          gzip: true,
-        });
-        await w.setParameters({ tessedit_pageseg_mode: PSM.AUTO, preserve_interword_spaces: '1' });
-        s.addWorker(w);
-      };
-      await make();
-      // 나머지는 뒤에서 준비 (첫 쪽은 바로 시작)
-      for (let i = 1; i < n; i++) void make().catch(() => {});
-      return s;
-    })();
-    scheduler.catch(() => { scheduler = null; });
+// 일꾼 모음: 컴퓨터 성능에 맞춰 1~3개 (한국어+영어). 쪽마다 읽는 방식(PSM)을 바꿔야 해서 직접 나눠 쓴다
+let pool: Worker[] = [];
+let idle: Worker[] = [];
+let making = 0;
+const waiters: { res: (w: Worker) => void; rej: (e: Error) => void }[] = [];
+const limit = () => Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+
+async function make() {
+  making++;
+  try {
+    const w = await createWorker(['kor', 'eng'], OEM.LSTM_ONLY, {
+      workerPath: `${base()}worker.min.js`,
+      corePath: base(),
+      langPath: base().replace(/\/$/, ''),
+      cacheMethod: 'none',
+      workerBlobURL: false,
+      gzip: true,
+    });
+    await w.setParameters({ preserve_interword_spaces: '1' });
+    pool.push(w);
+    release(w);
+  } finally { making--; }
+}
+function acquire(): Promise<Worker> {
+  const w = idle.pop();
+  if (w) return Promise.resolve(w);
+  if (pool.length + making < limit()) {
+    // 일꾼을 하나도 못 만들면 기다리는 쪽에 알린다 (이미 일꾼이 있으면 그 일꾼을 기다린다)
+    void make().catch((e) => { if (!pool.length && !making) for (const x of waiters.splice(0)) x.rej(e instanceof Error ? e : new Error(String(e))); });
   }
-  return scheduler;
+  return new Promise((res, rej) => waiters.push({ res, rej }));
+}
+function release(w: Worker) {
+  const next = waiters.shift();
+  if (next) next.res(w); else idle.push(w);
 }
 
 /** 다 쓰면 일꾼을 끝내 메모리를 돌려준다 */
 export async function stopOcr() {
-  const s = scheduler;
-  scheduler = null;
-  if (s) await (await s).terminate().catch(() => {});
+  const all = pool;
+  pool = []; idle = [];
+  await Promise.all(all.map((w) => w.terminate().catch(() => {})));
 }
 
 const JOINABLE = /[ᄀ-ᇿ㄰-㆏가-힯0-9]/;
@@ -109,12 +116,19 @@ export function joinSyllables(words: W[], lineH: number): W[] {
   return out;
 }
 
-/** PNG 한 장을 읽어 낱말과 위치(그림 픽셀 단위)를 돌려준다 */
-export async function recognize(png: Uint8Array): Promise<{ words: OcrWord[]; confidence: number }> {
-  const s = await getScheduler();
-  const r = await s.addJob('recognize', new Blob([png as BlobPart], { type: 'image/png' }), {}, { blocks: true, text: false });
+type Line = { words: W[]; bbox: { x0: number; y0: number; x1: number; y1: number }; baseline: { x0: number; y0: number; x1: number; y1: number } | null };
+
+async function read(w: Worker, png: Uint8Array, psm: PSM): Promise<{ lines: Line[]; confidence: number }> {
+  await w.setParameters({ tessedit_pageseg_mode: psm });
+  const r = await w.recognize(new Blob([png as BlobPart], { type: 'image/png' }), {}, { blocks: true, text: false });
+  const lines: Line[] = [];
+  for (const b of r.data.blocks ?? []) for (const p of b.paragraphs) for (const l of p.lines) lines.push({ words: l.words, bbox: l.bbox, baseline: l.baseline });
+  return { lines, confidence: r.data.confidence };
+}
+
+function toWords(lines: Line[]): OcrWord[] {
   const words: OcrWord[] = [];
-  for (const b of r.data.blocks ?? []) for (const p of b.paragraphs) for (const l of p.lines) {
+  for (const l of lines) {
     const lb = l.baseline;
     const lh = l.bbox.y1 - l.bbox.y0;
     const start = words.length;
@@ -124,9 +138,32 @@ export async function recognize(png: Uint8Array): Promise<{ words: OcrWord[]; co
       // 줄 기준선(기울어져 있을 수 있음)에서 이 낱말 가운데의 높이
       const mx = (w.bbox.x0 + w.bbox.x1) / 2;
       const base = lb && lb.x1 !== lb.x0 ? lb.y0 + (lb.y1 - lb.y0) * (mx - lb.x0) / (lb.x1 - lb.x0) : w.bbox.y1;
-      words.push({ text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1, base: Math.min(Math.max(base, w.bbox.y0), w.bbox.y1 + 2), lineH: l.bbox.y1 - l.bbox.y0, last: false });
+      words.push({ text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1, base: Math.min(Math.max(base, w.bbox.y0), w.bbox.y1 + 2), lineH: lh, last: false });
     }
     if (words.length > start) words[words.length - 1].last = true;
   }
-  return { words, confidence: r.data.confidence };
+  return words;
+}
+
+const overlaps = (a: OcrWord, b: OcrWord) => {
+  const ix = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0), iy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  if (ix <= 0 || iy <= 0) return false;
+  return ix * iy > 0.3 * Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0));
+};
+
+/**
+ * PNG 한 장을 읽어 낱말과 위치(그림 픽셀 단위)를 돌려준다.
+ * 표가 있는 쪽은 문단 방식(AUTO)으로 읽은 뒤 흩어진 글자 방식(SPARSE)으로 한 번 더 읽어 빠진 낱말만 보탠다
+ */
+export async function recognize(png: Uint8Array, table = false): Promise<{ words: OcrWord[]; confidence: number }> {
+  const w = await acquire();
+  try {
+    const a = await read(w, png, PSM.AUTO);
+    const words = toWords(a.lines);
+    if (table) {
+      const extra = toWords((await read(w, png, PSM.SPARSE_TEXT)).lines).filter((x) => !words.some((y) => overlaps(x, y)));
+      words.push(...extra);
+    }
+    return { words, confidence: a.confidence };
+  } finally { release(w); }
 }

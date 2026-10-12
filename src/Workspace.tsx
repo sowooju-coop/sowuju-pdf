@@ -702,8 +702,8 @@ export function Workspace(props: WorkspaceProps) {
       await Promise.all(Array.from({ length: lanes }, async () => {
         while (next < pages.length && !ocrStop.current) {
           const i = pages[next++];
-          const png = await client.renderPng(i, scale);
-          const r = await recognize(png);
+          const img = await client.renderOcr(i, scale);
+          const r = await recognize(img.png, img.table);
           results.push({ index: i, scale, words: r.words });
           words += r.words.length;
           done++;
