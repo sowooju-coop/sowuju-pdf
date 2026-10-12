@@ -267,6 +267,21 @@ export function stampChars(text: string): string[] {
 }
 
 /**
+ * 네모 직인·개인 도장은 칸을 짝수로 맞추는 게 관례라, 이름 글자 수가 홀수면 끝에 '인'을 붙이고
+ * 짝수면 붙이지 않는다 (이름에 한자가 있으면 '印'). 이미 '인'을 써 넣었으면 그 앞까지를 이름으로 본다.
+ * 예: 홍길동 → 홍길동인, 김구·남궁민수 → 그대로, 소우주협동조합인 → 소우주협동조합인
+ */
+export function evenStampName(name: string): { text: string; added: string | null } {
+  const raw = name.trim();
+  const base = /[인印]$/.test(raw) && stampChars(raw).length > 1 ? raw.slice(0, -1).trim() : raw;
+  const n = stampChars(base).length;
+  if (!n) return { text: raw, added: null };
+  if (n % 2 === 0) return { text: base, added: base === raw ? null : '' };
+  const mark = /[\u4E00-\u9FFF]/.test(base) ? '印' : '인';
+  return { text: base + mark, added: base + mark === raw ? null : mark };
+}
+
+/**
  * 직인 그리기.
  * corp: 법인 원형 인감(테두리에 기관 이름, 가운데 원에 직함), corpFilled: 같은 모양의 빨간 채움형,
  * square: 네모 직인(오른쪽 줄부터 세로), round: 개인 도장(동그라미).

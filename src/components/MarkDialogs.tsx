@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, loadStampFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_FONTS, STAMP_RED, STAMP_STYLES, STAMP_TITLES, titleFor, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
+import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, loadStampFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_FONTS, STAMP_RED, STAMP_STYLES, STAMP_TITLES, titleFor, evenStampName, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
 
 interface Props {
   kind: MarkKind;
@@ -156,6 +156,9 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
     if (t) setInner(hj ? t[1] : t[0]);
   };
   const [font, setFont] = useState(STAMP_FONTS[0].id);
+  // 네모 직인·개인 도장: 홀수면 '인'을 붙여 칸 맞추기
+  const [even, setEven] = useState(true);
+  const gridName = (st: StampStyle) => (even && (st === 'square' || st === 'round') ? evenStampName(name).text : name);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [fontsReady, setFontsReady] = useState(false);
   useEffect(() => { loadStampFonts().then(() => setFontsReady(true)); }, []);
@@ -164,13 +167,13 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
     const out: Record<string, string> = {};
     let chosen: HTMLCanvasElement | null = null;
     for (const st of STAMP_STYLES) {
-      const c = drawStamp(st.id, name, inner, STAMP_RED, 400, font);
+      const c = drawStamp(st.id, gridName(st.id), inner, STAMP_RED, 400, font);
       out[st.id] = c.toDataURL('image/png');
-      if (st.id === style) chosen = drawStamp(st.id, name, inner, STAMP_RED, 800, font);
+      if (st.id === style) chosen = drawStamp(st.id, gridName(st.id), inner, STAMP_RED, 800, font);
     }
     setPreviews(out);
     onReady(name.trim() ? chosen : null, style);
-  }, [name, inner, style, font, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [name, inner, style, font, even, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
   const corp = style === 'corp' || style === 'corpFilled';
   return (
     <div className="makestamp2">
@@ -199,6 +202,13 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
             </button>;
           })}
         </div>
+      )}
+      {!corp && (
+        <label className="evenrow">
+          <input type="checkbox" checked={even} onChange={(e) => setEven(e.target.checked)} />
+          <span>글자 수가 홀수면 끝에 &lsquo;인&rsquo;을 붙여 칸 맞추기</span>
+          {even && evenStampName(name).added !== null && <b className="evennote">{evenStampName(name).text}</b>}
+        </label>
       )}
       <div className="stampfonts" role="radiogroup" aria-label="도장 글씨체">
         <span className="fieldlabel">글씨체</span>
