@@ -480,3 +480,14 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .shrinkres.same{background:var(--soft);color:var(--muted)}
 .findrow .btn{width:auto;flex:none;padding:0 14px}
 .textbox.note{border-radius:2px;box-shadow:0 1px 3px rgba(120,90,0,.25)}
+
+/* 양식 입력칸 */
+.formlayer{position:absolute;left:0;top:0;z-index:2;pointer-events:none}
+.ffield{position:absolute;pointer-events:auto;box-sizing:border-box;margin:0;border:1px solid rgba(15,118,110,.35);border-radius:2px;background:rgba(15,118,110,.07);font-family:'Pretendard',sans-serif;color:transparent;caret-color:var(--ink);outline:none}
+.ffield:hover{border-color:var(--teal);background:rgba(15,118,110,.12)}
+.ffield:focus{background:#fff;color:var(--ink);border-color:var(--teal);box-shadow:0 0 0 2px rgba(15,118,110,.25);z-index:1}
+.ftext{padding:0 3px;line-height:1.15}
+textarea.ftext{resize:none;padding:2px 3px;overflow:hidden}
+.fselect{appearance:none;cursor:pointer;padding:0 3px}
+.fselect:focus{color:var(--ink)}
+.fcheck{padding:0;cursor:pointer}

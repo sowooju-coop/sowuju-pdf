@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { OrigFontInfo, NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { FormField, OrigFontInfo, NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -106,6 +106,11 @@ export class PdfClient {
   /** 문서를 새로 열 때마다 바뀌는 번호 (원래 글꼴 캐시 구분용) */
   docId = 0;
   origFont(index: number, name: string) { return this.call<OrigFontInfo | null>('origFont', { index, name }); }
+
+  // 양식 입력칸
+  fieldCount() { return this.call<number>('fieldCount'); }
+  fields(index: number) { return this.call<FormField[]>('fields', { index }); }
+  setField(index: number, id: number, value: string) { return this.call<EditResult>('setField', { index, id, value }); }
 
   // 보호 메뉴
   findPrivate(rrnBackOnly: boolean, search: string[]) { return this.call<{ hits: PrivacyHit[]; noText: number[] }>('findPrivate', { rrnBackOnly, search }); }

@@ -1,10 +1,11 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { NewShape, NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { FormField, NewShape, NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
+import { listFields, setField } from './forms';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
@@ -258,6 +259,21 @@ const handlers: Record<string, (args: any) => any> = {
     return { ...history() };
   },
   lines: ({ index }) => readLines(requireDoc(), index),
+  /** 양식 입력칸: 문서 전체 개수 (입력칸이 없는 문서는 빨리 0) */
+  fieldCount: () => {
+    const d = requireDoc();
+    const fields = d.getTrailer().get('Root').get('AcroForm').get('Fields');
+    if (!fields.isArray() || !fields.length) return 0;
+    let n = 0;
+    for (let i = 0; i < d.countPages(); i++) { const pg = d.loadPage(i); n += pg.getWidgets().filter((w) => !w.isReadOnly() && w.getFieldType() !== 'signature' && w.getFieldType() !== 'button').length; pg.destroy(); }
+    return n;
+  },
+  fields: ({ index }: { index: number }): FormField[] => listFields(requireDoc(), index),
+  setField: async ({ index, id, value }: { index: number; id: number; value: string }) => {
+    const usedFont = await edit('입력칸 채우기', () => setField(requireDoc(), index, id, value));
+    if (usedFont) fontsAdded = true;
+    return { ...history() };
+  },
   /** 고치는 줄의 원래 글꼴을 브라우저용으로 (쓸 수 없는 글꼴이면 null) */
   origFont: ({ index, name }: { index: number; name: string }) => {
     const e = origFont(requireDoc(), index, name);

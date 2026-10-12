@@ -12,6 +12,7 @@ import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
 import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/TextLayer';
 import { UpdateBar } from './components/UpdateBar';
+import { FormLayer } from './components/FormLayer';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
 import type { ShapeKind } from './lib/protocol';
@@ -93,6 +94,8 @@ export default function App() {
   // 펜·형광펜·도형: 놓아 둔 것, 고른 것, 지금 쓰는 도구와 색
   // 보호: 개인정보 지우기 상태, 암호·용량 대화상자, 처음 열 때 암호가 있었는지
   const [privacy, setPrivacy] = useState<PrivacyState | null>(null);
+  // 양식 입력칸이 있는 문서면 그 개수 (0이면 입력칸 층을 그리지 않는다)
+  const [fieldCount, setFieldCount] = useState(0);
   const [lockOpen, setLockOpen] = useState(false);
   const [shrinkOpen, setShrinkOpen] = useState(false);
   const [encrypted, setEncrypted] = useState(false);
@@ -170,6 +173,8 @@ export default function App() {
       setPrivacy(null);
       if (act === 'privacy') setTimeout(() => startPrivacyRef.current(), 0);
       client.info().then((i) => setEncrypted(!!i.encryption && i.encryption !== 'None')).catch(() => setEncrypted(false));
+      setFieldCount(0);
+      client.fieldCount().then((n) => { setFieldCount(n); if (n) say(`이 문서에는 입력칸이 ${n}개 있어요. 칸을 눌러 바로 쓰세요.`); }).catch(() => undefined);
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
       return true;
     } catch (e) {
@@ -296,6 +301,12 @@ export default function App() {
     } catch (e) { say(`지우지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
   }, [privacy, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 양식 입력칸에 값 넣기 */
+  const setField = useCallback(async (page: number, id: number, value: string) => {
+    try { applyPages(await client.setField(page, id, value), { kind: 'mark', page }, [page]); }
+    catch (e) { say(`입력하지 못했어요. ${(e as Error).message}`); }
+  }, [client, say]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 암호 걸어 저장 / 암호 풀어 저장 */
   const saveLocked = useCallback(async (password: string, printOnly: boolean) => {
@@ -606,7 +617,7 @@ export default function App() {
       if (mod && k === 'o') { e.preventDefault(); doOpen(); }
       else if (mod && k === 's') { e.preventDefault(); doSave(); }
       else if (mod && k === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
-      else if ((e.target as HTMLElement).isContentEditable || (e.target as HTMLElement).tagName === 'INPUT' || document.querySelector('.modal')) return;
+      else if ((e.target as HTMLElement).isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) || document.querySelector('.modal')) return;
       else if (e.key === 'Escape' && addingText) { e.preventDefault(); setAddingText(null); }
       else if (e.key === 'Escape' && privacy?.drawing) { e.preventDefault(); setPrivacy({ ...privacy, drawing: false }); }
       else if (e.key === 'Escape' && drawKind) { e.preventDefault(); setDrawKind(null); }
@@ -834,6 +845,9 @@ export default function App() {
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} root={viewerEl} className="sheet" />
+                  {fieldCount > 0 && mode !== 'edit' && !privacy && (
+                    <FormLayer client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} onSet={setField} />
+                  )}
                   {privacy && (
                     <RedactLayer
                       index={i} info={p} zoom={zoom} state={privacy}

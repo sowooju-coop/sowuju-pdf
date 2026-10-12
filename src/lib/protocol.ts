@@ -88,3 +88,22 @@ export interface OrigFontInfo {
   descent: number;
   upm: number;
 }
+
+/** PDF 양식 입력칸 */
+export interface FormField {
+  /** 입력칸 객체 번호 */
+  id: number;
+  type: 'text' | 'checkbox' | 'radiobutton' | 'combobox' | 'listbox' | 'signature' | 'button' | string;
+  name: string;
+  label: string;
+  /** 화면 좌표(pt, 위가 0) */
+  rect: [number, number, number, number];
+  value: string;
+  /** 체크·라디오가 켜져 있는지 */
+  on: boolean;
+  options: string[];
+  multiline: boolean;
+  readOnly: boolean;
+  maxLen: number;
+  comb: boolean;
+}

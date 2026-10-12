@@ -50,7 +50,7 @@ function loadFontBytes(file: string) {
   return fontBytes.get(file)!;
 }
 
-async function pdfFont(doc: mupdf.PDFDocument, file: string) {
+export async function pdfFont(doc: mupdf.PDFDocument, file: string) {
   let m = fontCache.get(doc);
   if (!m) fontCache.set(doc, (m = new Map()));
   if (!m.has(file)) {
