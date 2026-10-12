@@ -156,7 +156,7 @@ export async function loadStampFonts() {
 }
 
 /** 칸에 맞춰 가로·세로를 따로 늘려 글자 하나를 그린다 (도장 글씨 느낌) */
-function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number) {
+function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number, maxWide = 1.35) {
   x.font = `${stampFont.weight} 100px ${stampFont.css}, serif`;
   x.textAlign = 'center';
   x.textBaseline = 'alphabetic';
@@ -165,7 +165,7 @@ function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: numb
   const gh = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) || 100;
   // 칸 모양대로 늘리되, 너무 납작하거나 홀쭉해지지 않게 한도를 둔다
   let sx = (cw * 0.9) / gw, sy = (ch * 0.9) / gh;
-  if (sx > sy * 1.35) sx = sy * 1.35;
+  if (sx > sy * maxWide) sx = sy * maxWide;
   if (sy > sx * 1.9) sy = sx * 1.9;
   x.save();
   x.translate(cx, cy);
@@ -178,8 +178,9 @@ function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: numb
 function fillGrid(x: CanvasRenderingContext2D, chars: string[], left: number, top: number, w: number, h: number, vertical: boolean) {
   const n = chars.length;
   if (!n) return;
-  const lines = n <= 2 ? (vertical ? n : 1) : n === 3 ? (vertical ? 1 : 3) : Math.ceil(Math.sqrt(n));
-  const per = Array.from({ length: lines }, (_, k) => Math.floor(n / lines) + (k < n % lines ? 1 : 0));
+  const lines = n <= 2 ? (vertical ? n : 1) : n === 3 ? (vertical ? 2 : 3) : Math.ceil(Math.sqrt(n));
+  // 세 글자 세로는 오른쪽 줄에 성 한 글자, 왼쪽 줄에 이름 두 글자 (도장 관례)
+  const per = vertical && n === 3 ? [1, 2] : Array.from({ length: lines }, (_, k) => Math.floor(n / lines) + (k < n % lines ? 1 : 0));
   let k = 0;
   per.forEach((cnt, line) => {
     for (let j = 0; j < cnt; j++, k++) {
@@ -194,20 +195,26 @@ function fillGrid(x: CanvasRenderingContext2D, chars: string[], left: number, to
   });
 }
 
-/** 둥근 테두리를 따라 글자를 놓는다. 맨 위(별 자리)를 비우고 시계 방향으로 */
-function ringText(x: CanvasRenderingContext2D, chars: string[], cx: number, cy: number, r: number, size: number, color: string) {
+/**
+ * 둥근 테두리를 따라 글자를 놓는다. 맨 위는 별 자리로 비우고 시계 방향으로.
+ * 글자 수와 상관없이 테두리를 한 바퀴 꽉 채우도록 간격과 글자 폭을 맞춘다.
+ */
+function ringText(x: CanvasRenderingContext2D, chars: string[], cx: number, cy: number, r: number, band: number, color: string) {
   const n = chars.length;
   if (!n) return;
-  const gap = 0.55; // 맨 위 비우는 각도(라디안)
-  const span = Math.min(Math.PI * 2 - gap * 2, n * (size * 1.08) / r);
-  const start = -Math.PI / 2 + gap + (Math.PI * 2 - gap * 2 - span) / 2;
+  // 별도 글자 한 칸처럼 쳐서 고르게 나누되, 글자가 많아도 별 자리는 남긴다
+  const starSlot = Math.max((Math.PI * 2) / (n + 1), (band * 0.75) / r);
+  const pitch = (Math.PI * 2 - starSlot) / n;
+  const h = band * 0.64;
+  // 글자가 적으면 옆으로 넓혀 빈틈을 줄인다
+  const w = Math.min(pitch * r * 0.8, h * 1.8);
   x.fillStyle = color;
   chars.forEach((chr, i) => {
-    const a = start + span * ((i + 0.5) / n);
+    const a = -Math.PI / 2 + starSlot / 2 + pitch * (i + 0.5);
     x.save();
     x.translate(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
     x.rotate(a + Math.PI / 2);
-    fillChar(x, chr, 0, 0, size * 0.92, size);
+    fillChar(x, chr, 0, 0, w / 0.9, h / 0.9, 1.8);
     x.restore();
   });
 }
@@ -273,9 +280,8 @@ export function drawStamp(style: StampStyle, name: string, inner = '', color = S
   // 테두리 글자: 바깥 원과 안쪽 원 사이 띠의 가운데
   const band = R * (filled ? 0.93 : 0.95) - innerR;
   const ringR = innerR + band / 2;
-  const fontSize = Math.min(band * 0.62, (2 * Math.PI * ringR * 0.8) / Math.max(chars.length, 1) / 1.08);
   star(x, mid, mid - ringR, band * 0.2);
-  ringText(x, chars, mid, mid, ringR, fontSize, ink);
+  ringText(x, chars, mid, mid, ringR, band, ink);
   x.fillStyle = ink;
   const box = innerR * 1.25;
   fillGrid(x, innerChars, mid - box / 2, mid - box / 2, box, box, false);
