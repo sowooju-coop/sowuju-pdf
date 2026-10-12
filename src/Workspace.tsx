@@ -1601,7 +1601,7 @@ export function Workspace(props: WorkspaceProps) {
       </div>
 
       {markDialog && <MarkDialog kind={markDialog} onClose={() => setMarkDialog(null)} onPick={pickMark} />}
-      {printOpen && <PrintDialog hasSel={sel.size > 0} pageCount={doc.pages.length} current={cur + 1} onClose={() => setPrintOpen(false)} onPrint={doPrint} />}
+      {printOpen && <PrintDialog client={client} pages={doc.pages} selected={[...sel].sort((a, b) => a - b)} current={cur + 1} onClose={() => setPrintOpen(false)} onPrint={doPrint} />}
       {confirmClose && (
         <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) setConfirmClose(false); }}>
           <div className="dlg" role="alertdialog" aria-labelledby="cc-t">
@@ -1697,16 +1697,47 @@ function PasswordDialog({ pw, onCancel, onSubmit }: { pw: { file: OpenedFile; wr
   );
 }
 
-function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel: boolean; pageCount: number; current: number; onClose: () => void; onPrint: (o: PrintOptions) => void }) {
+interface PrintPrefs { dpi: number; per: 1 | 2 | 4; border: boolean }
+const loadPrintPrefs = (): PrintPrefs => {
+  const d: PrintPrefs = { dpi: 300, per: 1, border: true };
+  try {
+    const v = JSON.parse(localStorage.getItem('sowuju.print') ?? 'null');
+    if (v) return { ...d, ...v };
+    const old = Number(localStorage.getItem('sowuju.printPer'));
+    return old === 2 || old === 4 ? { ...d, per: old } : d;
+  } catch { return d; }
+};
+
+/** 인쇄 창: 고르기 + 실제 종이에 나올 모양 미리보기. 선명도·모아 찍기·테두리는 기억해 둔다 */
+function PrintDialog({ client, pages, selected, current, onClose, onPrint }: { client: PdfClient; pages: PageInfo[]; selected: number[]; current: number; onClose: () => void; onPrint: (o: PrintOptions) => void }) {
+  const pageCount = pages.length, hasSel = selected.length > 0;
+  const prefs = useMemo(loadPrintPrefs, []);
   const [range, setRange] = useState<PrintRange>(hasSel ? 'selected' : 'all');
-  const [dpi, setDpi] = useState(300);
-  const [per, setPer] = useState<1 | 2 | 4>(() => { try { return (Number(localStorage.getItem('sowuju.printPer')) || 1) as 1 | 2 | 4; } catch { return 1; } });
-  const [border, setBorder] = useState(true);
+  const [dpi, setDpi] = useState(prefs.dpi);
+  const [per, setPer] = useState<1 | 2 | 4>(prefs.per);
+  const [border, setBorder] = useState(prefs.border);
   const [text, setText] = useState('');
   const parsed = parseRanges(text, pageCount);
   const custom = parsed.groups.flat();
   const bad = range === 'custom' && (!!parsed.error || !custom.length);
-  const count = range === 'all' ? pageCount : range === 'current' ? 1 : range === 'custom' ? custom.length : 0;
+  const list = range === 'all' ? pages.map((_, k) => k) : range === 'current' ? [current - 1] : range === 'custom' ? custom : selected;
+  const count = list.length;
+  const sheets = per === 1 ? list.map((k) => [k]) : Array.from({ length: Math.ceil(list.length / per) }, (_, k) => list.slice(k * per, (k + 1) * per));
+  // 미리보기: 종이 한 장씩 (모아 찍기는 실제 인쇄와 같은 계산으로 작게)
+  const [sheet, setSheet] = useState(0);
+  const [img, setImg] = useState<string | null>(null);
+  const at = Math.min(sheet, Math.max(0, sheets.length - 1));
+  const key = `${per}|${border}|${(sheets[at] ?? []).join(',')}`;
+  useEffect(() => {
+    const g = sheets[at];
+    if (!g?.length) { setImg(null); return; }
+    let off = false, url = '';
+    const info = pages[g[0]];
+    const job = per === 1 ? client.renderPng(g[0], 260 / Math.max(info.width, info.height), info.width > info.height ? 90 : 0) : client.renderSheet(g, per as 2 | 4, 45, border);
+    job.then((b) => { if (off) return; url = URL.createObjectURL(new Blob([b as BlobPart], { type: 'image/png' })); setImg(url); }).catch(() => {});
+    return () => { off = true; if (url) URL.revokeObjectURL(url); };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSheet(0); }, [range, per, text]);
   const opt = (name: string, checked: boolean, onChange: () => void, title: string, sub: string, disabled = false) => (
     <label className={`opt${checked ? ' on' : ''}${disabled ? ' dis' : ''}`}>
       <input type="radio" name={name} checked={checked} onChange={onChange} disabled={disabled} />
@@ -1715,13 +1746,15 @@ function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel:
   );
   return (
     <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <form className="dlg wide" onSubmit={(e) => {
+      <form className="dlg wide printdlg" onSubmit={(e) => {
         e.preventDefault();
         if (bad) return;
-        try { localStorage.setItem('sowuju.printPer', String(per)); } catch { /* 괜찮음 */ }
+        try { localStorage.setItem('sowuju.print', JSON.stringify({ dpi, per, border })); } catch { /* 괜찮음 */ }
         onPrint({ range, custom, dpi, per, border });
       }}>
         <h3>인쇄</h3>
+        <div className="printgrid">
+        <div className="printform">
         <fieldset>
           <legend>인쇄할 페이지</legend>
           <div className="opts">
@@ -1758,10 +1791,21 @@ function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel:
             {opt('dpi', dpi === 600, () => setDpi(600), '아주 선명하게', '작은 글씨·도면')}
           </div>
         </fieldset>
-        <p>다음 화면에서 프린터, 매수, 양면 인쇄를 고를 수 있어요.</p>
+        </div>
+        <div className="printprev" aria-label="미리보기">
+          <div className="paper">{img ? <img src={img} alt={`종이 ${at + 1}장 미리보기`} /> : <span className="muted">{count ? '그리는 중…' : '인쇄할 쪽이 없어요'}</span>}</div>
+          <div className="pnav">
+            <button type="button" className="iconbtn" disabled={at <= 0} onClick={() => setSheet(at - 1)} aria-label="앞 장"><Icon name="left" size={16} /></button>
+            <span>종이 {sheets.length ? at + 1 : 0} / {sheets.length}장</span>
+            <button type="button" className="iconbtn" disabled={at >= sheets.length - 1} onClick={() => setSheet(at + 1)} aria-label="다음 장"><Icon name="right" size={16} /></button>
+          </div>
+          <small className="muted">{per === 1 ? `${(sheets[at] ?? [])[0] + 1 || ''}쪽` : (sheets[at] ?? []).map((k) => k + 1).join(', ') + '쪽'}</small>
+        </div>
+        </div>
+        <p>다음 화면에서 프린터, 매수, 양면 인쇄를 고를 수 있어요. 선명도·모아 찍기는 다음에도 그대로 기억해요.</p>
         <div className="acts">
           <button type="button" className="btn" onClick={onClose}>취소</button>
-          <button type="submit" className="btn navy" autoFocus={range !== 'custom'} disabled={bad}>다음</button>
+          <button type="submit" className="btn navy" autoFocus={range !== 'custom'} disabled={bad || !count}>다음</button>
         </div>
       </form>
     </div>

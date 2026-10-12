@@ -736,3 +736,12 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .tbarrows{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--soft)}
 .tbarrows button{width:28px;height:30px;border:0;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--ink2);cursor:pointer;box-shadow:0 1px 2px rgba(15,27,42,.1)}
 .tbarrows button:disabled{opacity:.35;cursor:default;box-shadow:none;background:transparent}
+
+/* 인쇄 미리보기 */
+.dlg.printdlg{width:min(860px,100%)}
+.printgrid{display:grid;grid-template-columns:1fr 250px;gap:20px;align-items:start}
+.printform{display:grid;gap:14px}
+.printprev{display:grid;justify-items:center;gap:8px;position:sticky;top:0}
+.printprev .paper{width:230px;aspect-ratio:210/297;background:#fff;border:1px solid #DDE3E9;box-shadow:0 4px 14px rgba(15,27,42,.12);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.printprev .paper img{max-width:100%;max-height:100%;object-fit:contain}
+.printprev .pnav{display:flex;align-items:center;gap:8px;font-size:12.5px;font-variant-numeric:tabular-nums}
