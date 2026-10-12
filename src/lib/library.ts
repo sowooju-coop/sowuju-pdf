@@ -173,7 +173,16 @@ export function titleFor(name: string, hanja: boolean) {
 }
 
 /** 칸에 맞춰 가로·세로를 따로 늘려 글자 하나를 그린다 (도장 글씨 느낌) */
-function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number, maxWide = 1.35) {
+function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number, maxWide = 1.35): number {
+  // (주)·(사) 같은 칸: 가운데 글자를 크게 그리고, 괄호는 그 바로 양옆에 가늘고 길게
+  if (chr.length > 2 && chr[0] === '(') {
+    const pw = cw * 0.16;
+    const iw = fillChar(x, chr.slice(1, -1), cx, cy, cw - pw * 2, ch * 0.8, maxWide);
+    const off = iw / 2 + pw * 0.55;
+    fillChar(x, '(', cx - off, cy, pw, ch);
+    fillChar(x, ')', cx + off, cy, pw, ch);
+    return iw + pw * 2;
+  }
   x.font = `${stampFont.weight} 100px ${stampFont.css}, ${stampFont.hanja}, serif`;
   x.textAlign = 'center';
   x.textBaseline = 'alphabetic';
@@ -189,6 +198,7 @@ function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: numb
   x.scale(sx, sy);
   x.fillText(chr, (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
   x.restore();
+  return gw * sx;
 }
 
 /** 글자들을 칸으로 나눠 채운다. vertical: 오른쪽 줄부터 위→아래(전통 직인), 아니면 위 줄부터 왼→오른쪽 */
@@ -219,15 +229,20 @@ function fillGrid(x: CanvasRenderingContext2D, chars: string[], left: number, to
 function ringText(x: CanvasRenderingContext2D, chars: string[], cx: number, cy: number, r: number, band: number, color: string) {
   const n = chars.length;
   if (!n) return;
+  // (주)처럼 괄호로 묶은 칸은 1.5칸 폭을 준다
+  const wt = chars.map((c) => (c.length > 2 ? 1.5 : 1));
+  const total = wt.reduce((a, b) => a + b, 0);
   // 별도 글자 한 칸처럼 쳐서 고르게 나누되, 글자가 많아도 별 자리는 남긴다
-  const starSlot = Math.max((Math.PI * 2) / (n + 1), (band * 0.75) / r);
-  const pitch = (Math.PI * 2 - starSlot) / n;
+  const starSlot = Math.max((Math.PI * 2) / (total + 1), (band * 0.75) / r);
+  const pitch = (Math.PI * 2 - starSlot) / total;
   const h = band * 0.64;
-  // 글자가 적으면 옆으로 넓혀 빈틈을 줄인다
-  const w = Math.min(pitch * r * 0.8, h * 1.8);
   x.fillStyle = color;
+  let at = -Math.PI / 2 + starSlot / 2;
   chars.forEach((chr, i) => {
-    const a = -Math.PI / 2 + starSlot / 2 + pitch * (i + 0.5);
+    const a = at + (pitch * wt[i]) / 2;
+    at += pitch * wt[i];
+    // 글자가 적으면 옆으로 넓혀 빈틈을 줄인다
+    const w = Math.min(pitch * wt[i] * r * 0.8, h * 1.8 * wt[i]);
     x.save();
     x.translate(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
     x.rotate(a + Math.PI / 2);
@@ -246,6 +261,11 @@ function star(x: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
   x.fill();
 }
 
+/** 도장에 넣을 글자 단위로 나눈다. (주)·(사)·(재)처럼 괄호로 묶인 한두 글자는 한 칸으로 */
+export function stampChars(text: string): string[] {
+  return text.replace(/\s+/g, '').match(/\([^()]{1,2}\)|./gu) ?? [];
+}
+
 /**
  * 직인 그리기.
  * corp: 법인 원형 인감(테두리에 기관 이름, 가운데 원에 직함), corpFilled: 같은 모양의 빨간 채움형,
@@ -253,8 +273,8 @@ function star(x: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
  */
 export function drawStamp(style: StampStyle, name: string, inner = '', color = STAMP_RED, size = 640, font = STAMP_FONTS[0].id): HTMLCanvasElement {
   stampFont = STAMP_FONTS.find((f) => f.id === font) ?? STAMP_FONTS[0];
-  const chars = [...name.replace(/\s+/g, '')];
-  const innerChars = [...inner.replace(/\s+/g, '')];
+  const chars = stampChars(name);
+  const innerChars = stampChars(inner);
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const x = c.getContext('2d')!;
