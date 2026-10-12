@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
+const { setupUpdater } = require('./updater.cjs');
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const DIST = path.join(__dirname, '..', 'dist');
@@ -89,6 +90,7 @@ app.whenReady().then(() => {
   });
   Menu.setApplicationMenu(null);
   createWindow();
+  setupUpdater(() => win);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

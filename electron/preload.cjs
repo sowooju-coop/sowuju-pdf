@@ -25,4 +25,14 @@ contextBridge.exposeInMainWorld('sowuju', {
     return () => ipcRenderer.removeListener('save-before-close', fn);
   },
   closeNow: () => ipcRenderer.send('close-now'),
+  // 자동 업데이트
+  appVersion: () => ipcRenderer.invoke('app-version'),
+  updateState: () => ipcRenderer.invoke('update-state'),
+  checkUpdate: () => ipcRenderer.invoke('update-check'),
+  installUpdate: () => ipcRenderer.send('update-install'),
+  onUpdate: (cb) => {
+    const fn = (_e, st) => cb(st);
+    ipcRenderer.on('update-state', fn);
+    return () => ipcRenderer.removeListener('update-state', fn);
+  },
 });

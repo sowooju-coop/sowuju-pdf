@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon, Logo } from './Icon';
+import { VersionInfo } from './UpdateBar';
 import { isApp, recentList, type RecentFile } from '../lib/host';
 
 export type QuickAction = 'edit' | 'sign' | 'merge' | 'pages' | 'print' | 'privacy';
@@ -144,7 +145,7 @@ export function StartScreen({ easy, easyScale, onEasy, onEasyScale, onOpen, onOp
           )}
         </section>
 
-        <footer className="startfoot"><Icon name="shield" size={14} />광고 없음 · 회원가입 없음 · 파일은 이 컴퓨터 밖으로 나가지 않아요 · 소우주사회적협동조합이 만든 공개 소프트웨어</footer>
+        <footer className="startfoot"><Icon name="shield" size={14} />광고 없음 · 회원가입 없음 · 파일은 이 컴퓨터 밖으로 나가지 않아요 · 소우주사회적협동조합이 만든 공개 소프트웨어<VersionInfo /></footer>
       </main>
     </div>
   );

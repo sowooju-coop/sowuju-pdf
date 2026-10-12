@@ -11,6 +11,7 @@ import { PageMenu, type PageActions, type PageMenuState } from './components/Pag
 import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
 import { TextLayer, type TextBox } from './components/TextLayer';
+import { UpdateBar } from './components/UpdateBar';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
 import type { ShapeKind } from './lib/protocol';
 import { dataUrlBytes, newId, type Mark, type MarkKind } from './lib/library';
@@ -592,6 +593,7 @@ export default function App() {
         {pw && <PasswordDialog pw={pw} onCancel={() => setPw(null)} onSubmit={(v) => load(pw.file, v)} />}
         {busy && <div className="busy"><div>{busy}</div></div>}
         <div className={`toast${toast ? ' show' : ''}`} role="status">{toast}</div>
+        <UpdateBar />
       </>
     );
   }
@@ -981,6 +983,7 @@ export default function App() {
       {pw && <PasswordDialog pw={pw} onCancel={() => setPw(null)} onSubmit={(v) => load(pw.file, v)} />}
       {busy && <div className="busy"><div>{busy}</div></div>}
       <div className={`toast${toast ? ' show' : ''}`} role="status">{toast}</div>
+      <UpdateBar />
     </div>
   );
 }

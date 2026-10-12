@@ -10,3 +10,4 @@
 | 본명조·본고딕(Noto Serif KR, Noto Sans KR, Google) — 상용 한자 4,888자만 남긴 것 | 직인 한자 | SIL Open Font License 1.1 (`public/fonts/OFL-NotoKR.txt`) |
 | [React](https://react.dev) | 화면 구성 | MIT |
 | [Electron](https://www.electronjs.org) | 설치형 프로그램 | MIT |
+| [electron-updater](https://www.electron.build/auto-update) | 자동 업데이트 | MIT |

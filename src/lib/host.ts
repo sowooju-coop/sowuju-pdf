@@ -1,4 +1,12 @@
 // 설치형(Electron)과 브라우저 개발 모드의 차이를 한곳에서 감춘다.
+/** 자동 업데이트 상태 (설치형) */
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'latest' | 'downloading' | 'ready' | 'error' | 'dev';
+  version: string | null;
+  percent: number;
+  error: string | null;
+}
+
 export interface PrintPage {
   png: Uint8Array;
   landscape: boolean;
@@ -34,6 +42,11 @@ interface AppBridge {
   setUnsaved(name: string | null): void;
   onSaveBeforeClose(cb: () => void): () => void;
   closeNow(): void;
+  appVersion(): Promise<string>;
+  updateState(): Promise<UpdateState>;
+  checkUpdate(): Promise<UpdateState>;
+  installUpdate(): void;
+  onUpdate(cb: (s: UpdateState) => void): () => void;
 }
 
 declare global {
