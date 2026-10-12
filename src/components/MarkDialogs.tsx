@@ -190,11 +190,13 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
         <div className="stampfonts" role="group" aria-label="가운데 글자 고르기">
           <div className="seg" role="radiogroup" aria-label="한글 또는 한자">
             <button role="radio" aria-checked={!hanja} className={hanja ? '' : 'on'} onClick={() => changeScript(false)}>한글</button>
-            <button role="radio" aria-checked={hanja} className={hanja ? 'on' : ''} onClick={() => changeScript(true)}>漢字</button>
+            <button role="radio" aria-checked={hanja} className={hanja ? 'on' : ''} onClick={() => changeScript(true)}>한자</button>
           </div>
           {STAMP_TITLES.map((t) => {
             const v = hanja ? t[1] : t[0];
-            return <button key={t[0]} className={`fontchip small${inner === v ? ' on' : ''}`} onClick={() => { setInner(v); setAutoInner(false); }}>{v}</button>;
+            return <button key={t[0]} className={`fontchip small${inner === v ? ' on' : ''}`} onClick={() => { setInner(v); setAutoInner(false); }} title={hanja ? `${t[0]} (${t[1]})` : undefined}>
+              {hanja ? <>{t[0]}<span className="hj">{t[1]}</span></> : v}
+            </button>;
           })}
         </div>
       )}
