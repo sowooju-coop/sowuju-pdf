@@ -393,3 +393,28 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .sg-prev img{max-width:100%;max-height:84px;object-fit:contain}
 .signcard small{font-size:12px;color:var(--muted)}
 @media (max-width:640px){.stampgallery{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* 글자 추가 */
+.textlayer{position:absolute;left:0;top:0;z-index:3;pointer-events:none}
+.textlayer.adding,.textlayer .textbox,.textlayer .minibar{pointer-events:auto}
+.textlayer.adding{cursor:text}
+.textbox{position:absolute;min-width:4px}
+.textbox .tedit{outline:none;white-space:pre;min-width:1ch;padding:0;margin:0;cursor:text;caret-color:var(--teal)}
+.textbox::after{content:'';position:absolute;inset:-3px -4px;border:1px dashed transparent;border-radius:3px;pointer-events:none}
+.textbox:hover::after{border-color:rgba(15,118,110,.45)}
+.textbox.on::after{border:1.5px solid var(--teal)}
+.textbox .tedit:empty::before{content:'여기에 입력';color:#9AA5B1;font-weight:400}
+.tgrip{position:absolute;left:-26px;top:-4px;width:20px;height:20px;display:none;align-items:center;justify-content:center;border-radius:6px;background:var(--teal);color:#fff;cursor:move;touch-action:none}
+.textbox.on .tgrip,.textbox:hover .tgrip{display:flex}
+.textghost{position:absolute;pointer-events:none;padding:2px 6px;border-radius:4px;background:rgba(15,118,110,.1);color:var(--teal);font:600 13px Pretendard;white-space:nowrap}
+.textghost .caret{display:inline-block;width:2px;height:16px;background:var(--teal);vertical-align:middle}
+.minibar .mb-b.wide{width:auto;padding:0 9px;font-weight:600}
+.minibar .mb-size{min-width:24px;text-align:center;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.minibar .mb-color{width:28px;height:32px;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
+.minibar .mb-color span{width:16px;height:16px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+.minibar .mb-color.on{background:var(--teal-tint)}
+.minibar .mb-color.on span{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--teal)}
+.dropwrap{position:relative;display:inline-flex}
+.dropmenu{position:absolute;top:calc(100% + 6px);left:0;z-index:30;display:flex;flex-direction:column;min-width:170px;padding:6px;border-radius:var(--r-md);background:#fff;box-shadow:0 0 0 1px rgba(15,27,42,.06),0 12px 30px rgba(15,27,42,.18)}
+.dropmenu button{height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;font-size:14px;color:var(--ink)}
+.dropmenu button:hover{background:var(--soft)}

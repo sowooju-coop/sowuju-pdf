@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
-import { readLines, replaceText } from './textEdit';
+import type { NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import { addTexts, readLines, replaceText } from './textEdit';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
 let doc: mupdf.PDFDocument | null = null;
@@ -205,9 +205,11 @@ const handlers: Record<string, (args: any) => any> = {
   },
   duplicate: ({ indices }) => { remember(); duplicatePages(indices); return { pages: pageInfos(), ...history() }; },
   extract: ({ indices }) => extractPages(indices),
-  placeImages: ({ items }: { items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[] }) => {
+  // 서명·직인 그림과 새 글자를 한 번에 넣는다 (되돌리기 한 번에 모두 빠지게)
+  place: async ({ items, texts = [] }: { items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[]; texts?: NewText[] }) => {
     remember();
     for (const it of items) placeImage(it.page, it.x, it.y, it.w, it.h, it.png);
+    await addTexts(requireDoc(), texts);
     return { pages: pageInfos(), ...history() };
   },
   lines: ({ index }) => readLines(requireDoc(), index),

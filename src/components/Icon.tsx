@@ -33,6 +33,8 @@ const PATHS: Record<string, string> = {
   minus: 'M5 12h14',
   arrow: 'M5 12h14M13 6l6 6-6 6',
   help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01',
+  move: 'M12 3v18M3 12h18M12 3l-3 3m3-3 3 3M12 21l-3-3m3 3 3-3M3 12l3-3m-3 3 3 3M21 12l-3-3m3 3-3 3',
+  calendar: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5',
   fit: 'M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3M4 4v4M20 4v4M4 16v4M20 16v4',
 };
 

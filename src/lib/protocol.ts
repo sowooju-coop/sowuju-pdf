@@ -55,3 +55,14 @@ export interface ReplaceRequest {
   color: [number, number, number];
   fontFile: string;
 }
+
+/** 새로 넣는 글자 한 줄 (x, y 는 글자 바닥선 왼쪽, 화면 좌표 pt) */
+export interface NewText {
+  page: number;
+  x: number;
+  y: number;
+  size: number;
+  color: [number, number, number];
+  fontFile: string;
+  text: string;
+}

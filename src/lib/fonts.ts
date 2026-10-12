@@ -34,3 +34,14 @@ export async function loadFonts() {
     (['Pretendard', 'NanumMyeongjo'] as const).flatMap((f) => [document.fonts.load(`400 16px ${f}`), document.fonts.load(`700 16px ${f}`)]),
   ).catch(() => undefined);
 }
+
+/** 새 글자 상자의 줄 간격 (글자 크기의 배수) */
+export const LINE_HEIGHT = 1.3;
+
+/** 상자 맨 위에서 첫 줄 바닥선까지의 거리(pt). CSS 줄 상자와 같은 규칙으로 계산해 화면과 PDF가 맞게 */
+export function baselineOffset(family: FontFamily, bold: boolean, size: number) {
+  ctx.font = `${bold ? 700 : 400} ${size}px ${FONTS[family].css}`;
+  const m = ctx.measureText('가Ag');
+  const asc = m.fontBoundingBoxAscent ?? size * 0.9, desc = m.fontBoundingBoxDescent ?? size * 0.25;
+  return (LINE_HEIGHT * size - (asc + desc)) / 2 + asc;
+}

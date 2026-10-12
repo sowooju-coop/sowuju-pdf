@@ -1,6 +1,6 @@
 // 글자 읽기와 글자 바꾸기. 원래 글자는 redaction으로 파일에서 진짜로 지우고, 같은 자리에 새 글자를 쓴다.
 import * as mupdf from 'mupdf';
-import type { TextLine, ReplaceRequest } from '../lib/protocol';
+import type { NewText, TextLine, ReplaceRequest } from '../lib/protocol';
 import { addResource, appendContent, applyMatrix, num } from './pdfUtil';
 
 /** 페이지의 글자를 줄 단위로, 글자마다 정확한 위치와 함께 읽는다 (좌표: 화면과 같은 페이지 공간, pt, 위가 0) */
@@ -101,4 +101,15 @@ export async function replaceText(doc: mupdf.PDFDocument, req: ReplaceRequest) {
     appendText(doc, page, ref, font, req);
   }
   page.destroy();
+}
+
+/** 빈 곳에 새 글자를 쓴다 (글자 추가, 날짜) */
+export async function addTexts(doc: mupdf.PDFDocument, items: NewText[]) {
+  for (const it of items) {
+    if (!it.text.trim()) continue;
+    const page = doc.loadPage(it.page);
+    const { ref, font } = await pdfFont(doc, it.fontFile);
+    appendText(doc, page, ref, font, { ...it, remove: [], dir: [1, 0], spacing: 0 });
+    page.destroy();
+  }
 }

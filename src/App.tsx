@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PdfClient, type EditResult } from './lib/pdfClient';
 import type { PageInfo, ReplaceRequest } from './lib/protocol';
-import { FONTS, loadFonts } from './lib/fonts';
+import { baselineOffset, fontFile, FONTS, LINE_HEIGHT, loadFonts } from './lib/fonts';
+import { dateFormats, hexRgb, loadTextStyle, saveTextStyle } from './lib/textTools';
 import type { EditStyle } from './lib/textDiff';
 import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, setUiZoom, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
 import { PageRail } from './components/PageRail';
@@ -9,6 +10,7 @@ import { PageGrid } from './components/PageGrid';
 import { PageMenu, type PageActions, type PageMenuState } from './components/PageMenu';
 import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
+import { TextLayer, type TextBox } from './components/TextLayer';
 import { dataUrlBytes, newId, type Mark, type MarkKind } from './lib/library';
 import { EditLayer, type EditingState } from './components/EditLayer';
 import { PageCanvas } from './components/PageCanvas';
@@ -68,6 +70,12 @@ export default function App() {
   const [placing, setPlacing] = useState<Mark | null>(null);
   const [placed, setPlaced] = useState<Placed[]>([]);
   const [activePlaced, setActivePlaced] = useState<string | null>(null);
+  // 글자 추가: 놓아 둔 글자 상자, 넣을 곳 고르는 중, 고른 상자, 마지막에 쓴 모양
+  const [texts, setTexts] = useState<TextBox[]>([]);
+  const [addingText, setAddingText] = useState<{ text: string } | null>(null);
+  const [activeText, setActiveText] = useState<string | null>(null);
+  const [dateMenu, setDateMenu] = useState(false);
+  const textStyle = useRef<Pick<TextBox, 'size' | 'family' | 'bold' | 'color'>>(loadTextStyle());
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [hist, setHist] = useState({ canUndo: false, canRedo: false });
   const [log, setLog] = useState<{ done: HistItem[]; undone: HistItem[] }>({ done: [], undone: [] });
@@ -124,6 +132,7 @@ export default function App() {
       setTab(act === 'pages' ? 'page' : 'edit');
       setOverview(act === 'pages');
       setPlaced([]); setPlacing(null); setActivePlaced(null);
+      setTexts([]); setAddingText(null); setActiveText(null);
       if (act === 'print') setPrintOpen(true);
       if (act === 'sign') setMarkDialog('sign');
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
@@ -152,17 +161,27 @@ export default function App() {
 
   /** 놓아 둔 서명·직인을 PDF에 고정한다 */
   const applyPlaced = useCallback(async () => {
-    if (!placed.length) return;
+    const boxes = texts.filter((t) => t.text.trim());
+    if (!placed.length && !boxes.length) { setTexts([]); setActiveText(null); setAddingText(null); return; }
     const items = placed.map((p) => ({ page: p.page, x: p.x, y: p.y, w: p.w, h: p.h, png: dataUrlBytes(p.src) }));
+    const lines = boxes.flatMap((b) => {
+      const base = baselineOffset(b.family, b.bold, b.size);
+      return b.text.split('\n').map((text, i) => ({
+        page: b.page, x: b.x, y: b.y + base + i * LINE_HEIGHT * b.size, size: b.size,
+        color: hexRgb(b.color), fontFile: fontFile(b.family, b.bold), text,
+      }));
+    });
     const kinds = new Set(placed.map((p) => p.kind));
+    const what = [kinds.has('sign') && '서명', kinds.has('stamp') && '직인', boxes.length && '글자'].filter(Boolean).join('·');
     setBusy('넣는 중…');
     try {
-      applyPages(await client.placeImages(items), { kind: 'mark', page: placed[0].page });
+      applyPages(await client.place(items, lines), { kind: 'mark', page: (placed[0] ?? boxes[0]).page });
       setPlaced([]); setActivePlaced(null); setPlacing(null);
-      say(`${kinds.has('sign') && kinds.has('stamp') ? '서명과 직인을' : kinds.has('sign') ? '서명을' : '직인을'} 넣었어요. 되돌리기로 뺄 수 있어요.`);
+      setTexts([]); setActiveText(null); setAddingText(null);
+      say(`${what}을 넣었어요. 되돌리기로 뺄 수 있어요.`);
     } catch (e) { say(`넣지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
-  }, [placed, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [placed, texts, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
   const applyPlacedRef = useRef(applyPlaced);
   applyPlacedRef.current = applyPlaced;
 
@@ -180,6 +199,16 @@ export default function App() {
     setPlaced((l) => [...l, ...copies]);
     say(copies.length ? `${copies.length + 1}쪽 모두 같은 자리에 놓았어요. 확인한 뒤 적용을 누르세요.` : '이미 모든 쪽에 놓여 있어요.');
   }, [doc, placed, say]);
+
+  /** 글자 넣을 곳 고르기 시작 (text: 날짜처럼 미리 정한 글자) */
+  const startText = useCallback((text = '') => {
+    setPlacing(null);
+    setMode('view');
+    setOverview(false);
+    setDateMenu(false);
+    setAddingText({ text });
+    say(text ? '날짜를 넣을 곳을 누르세요. Esc를 누르면 취소돼요.' : '글자를 넣을 곳을 누르세요. Esc를 누르면 취소돼요.');
+  }, [say]);
 
   const pickMark = useCallback((m: Mark) => {
     setMarkDialog(null);
@@ -434,9 +463,11 @@ export default function App() {
       else if (mod && k === 's') { e.preventDefault(); doSave(); }
       else if (mod && k === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
       else if ((e.target as HTMLElement).isContentEditable || (e.target as HTMLElement).tagName === 'INPUT' || document.querySelector('.modal')) return;
+      else if (e.key === 'Escape' && addingText) { e.preventDefault(); setAddingText(null); }
       else if (e.key === 'Escape' && (placing || activePlaced)) { e.preventDefault(); if (placing) setPlacing(null); else setActivePlaced(null); }
-      else if (e.key === 'Enter' && placed.length) { e.preventDefault(); applyPlacedRef.current(); }
+      else if (e.key === 'Enter' && (placed.length || texts.length)) { e.preventDefault(); applyPlacedRef.current(); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && activePlaced) { e.preventDefault(); setPlaced((l) => l.filter((x) => x.id !== activePlaced)); setActivePlaced(null); }
+      else if (!mod && k === 't' && doc && !overview) { e.preventDefault(); startText(); }
       else if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if (mod && k === 'y') { e.preventDefault(); redo(); }
       else if (!mod && k === 'e' && doc) { setTab('edit'); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }
@@ -468,7 +499,7 @@ export default function App() {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview]);
 
   // 탐색기에서 PDF를 두 번 눌러 열거나, 이미 켜진 창에 파일을 보낼 때
   const loadRef = useRef(load);
@@ -559,8 +590,18 @@ export default function App() {
         )}
         {tab === 'edit' && (
           <div className="tools">
-            {tool('edit', '글자 고치기', () => { applyPlacedRef.current(); setPlacing(null); setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
-            {tool('text', '글자 추가')}
+            {tool('edit', '글자 고치기', () => { applyPlacedRef.current(); setPlacing(null); setAddingText(null); setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
+            {tool('text', '글자 추가', () => (addingText && !addingText.text ? setAddingText(null) : startText()), { on: !!addingText && !addingText.text, title: '빈 곳에 글자 쓰기 (T)' })}
+            <div className="dropwrap">
+              {tool('calendar', '날짜', () => setDateMenu((v) => !v), { on: dateMenu || !!addingText?.text, title: '오늘 날짜 넣기' })}
+              {dateMenu && (
+                <div className="dropmenu" role="menu" onMouseLeave={() => setDateMenu(false)}>
+                  {dateFormats(new Date()).map((d) => (
+                    <button key={d} role="menuitem" onClick={() => startText(d)}>{d}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             {tool('image', '그림')}
             <span className="vsep" aria-hidden="true" />
             {tool('highlight', '형광펜')}
@@ -653,6 +694,27 @@ export default function App() {
                       onAllPages={doc.pages.length > 1 ? placeOnAllPages : undefined}
                     />
                   )}
+                  {(addingText || texts.some((t) => t.page === i)) && (
+                    <TextLayer
+                      index={i} info={p} zoom={zoom}
+                      boxes={texts.filter((t) => t.page === i)}
+                      activeId={activeText}
+                      adding={addingText}
+                      onAdd={(page, x, y) => {
+                        const st = textStyle.current;
+                        const b: TextBox = { id: newId(), page, x, y: Math.max(0, y - st.size * LINE_HEIGHT * 0.5), text: addingText?.text ?? '', ...st };
+                        setTexts((l) => [...l, b]); setActiveText(b.id); setAddingText(null);
+                      }}
+                      onChange={(id, patch) => {
+                        setTexts((l) => l.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+                        const { size, family, bold, color } = patch;
+                        if (size || family || bold !== undefined || color) { textStyle.current = { ...textStyle.current, ...Object.fromEntries(Object.entries({ size, family, bold, color }).filter(([, v]) => v !== undefined)) }; saveTextStyle(textStyle.current); }
+                      }}
+                      onSelect={(id) => { setActiveText(id); if (!id) setTexts((l) => l.filter((t) => t.text.trim())); }}
+                      onRemove={(id) => { setTexts((l) => l.filter((t) => t.id !== id)); setActiveText(null); }}
+                      onApply={() => applyPlacedRef.current()}
+                    />
+                  )}
                   {mode === 'edit' && (
                     <EditLayer
                       client={client} index={i} info={p} zoom={zoom} rev={rev}
@@ -668,6 +730,20 @@ export default function App() {
               ))}
             </div>
           </div>
+          {addingText && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              <span><b>{addingText.text ? '날짜' : '글자'} 넣을 곳을 누르세요</b><span className="muted"> · Esc로 취소</span></span>
+              <button onClick={() => setAddingText(null)}>취소</button>
+            </div>
+          )}
+          {!addingText && !placing && placed.length === 0 && texts.length > 0 && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              <span><b>글자 {texts.length}개</b><span className="muted"> · 왼쪽 위 손잡이로 옮기고, 다 쓰면 적용</span></span>
+              <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>
+            </div>
+          )}
           {(placing || placed.length > 0) && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
@@ -679,7 +755,7 @@ export default function App() {
                 : <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>}
             </div>
           )}
-          {mode === 'edit' && !overview && !placing && placed.length === 0 && (
+          {mode === 'edit' && !overview && !placing && placed.length === 0 && texts.length === 0 && !addingText && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               <span><b>글자 고치는 중</b><span className="muted"> · 줄을 누르거나 글자 위를 끌어서 고르세요</span></span>
