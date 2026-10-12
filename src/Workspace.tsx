@@ -14,6 +14,7 @@ import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/Text
 import { FormLayer } from './components/FormLayer';
 import { SelectLayer, type TextSelection } from './components/SelectLayer';
 import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
+import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
 import { SplitDialog } from './components/SplitDialog';
 import { groupLabel, parseRanges } from './lib/ranges';
 import { FindBar, FindLayer, type FindState } from './components/Find';
@@ -152,6 +153,7 @@ export function Workspace(props: WorkspaceProps) {
   const [lockOpen, setLockOpen] = useState(false);
   const [shrinkOpen, setShrinkOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const [imgOpen, setImgOpen] = useState(false);
   const [markOpen, setMarkOpen] = useState<'num' | 'wm' | null>(null);
   const [encrypted, setEncrypted] = useState(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -578,6 +580,25 @@ export function Workspace(props: WorkspaceProps) {
     finally { setBusy(null); }
   }, [client, doc, say]);
 
+  /** 쪽을 그림 파일로: 한 쪽이면 파일 하나, 여러 쪽이면 폴더에 */
+  const exportImages = useCallback(async ({ pages, format, dpi }: ImageExportOptions) => {
+    if (!doc) return;
+    setImgOpen(false);
+    await applyPlacedRef.current();
+    const base = baseName(doc.name), width = String(doc.pages.length).length;
+    try {
+      const files: { name: string; bytes: Uint8Array }[] = [];
+      for (let k = 0; k < pages.length; k++) {
+        setBusy(`그림 만드는 중… ${k + 1} / ${pages.length}`);
+        files.push({ name: `${base}_${String(pages[k] + 1).padStart(width, '0')}쪽.${format}`, bytes: await client.renderImage(pages[k], dpi, format) });
+      }
+      setBusy(null);
+      if (files.length === 1) { if (await saveFile(files[0].name, files[0].bytes)) say('그림으로 저장했어요.'); }
+      else { const r = await saveFiles('그림을 저장할 폴더 고르기', files); if (r) say(`그림 ${r.count}개를 저장했어요.`); }
+    } catch (e) { say(`그림으로 저장하지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, doc, say]);
+
   const reorder = useCallback(async (order: number[]) => {
     applyPages(await client.move(order), { kind: 'page', page: order.indexOf(cur) });
     setSel(new Set());
@@ -903,6 +924,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('merge', '합치기', () => pickFiles(doc.pages.length), { title: '다른 PDF나 사진을 맨 뒤에 붙이기' })}
             {tool('save', '저장', doSave)}
             {tool('print', '인쇄', () => setPrintOpen(true))}
+            {tool('image', '그림으로', () => setImgOpen(true), { title: '쪽을 JPG·PNG 그림 파일로 저장' })}
             <span className="vsep" aria-hidden="true" />
             {tool('fit', '폭에 맞추기', () => fitWidth(doc.pages))}
           </div>
@@ -957,6 +979,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('water', '워터마크', () => setMarkOpen('wm'), { title: '"사본", "대외비" 같은 글자를 쪽 가운데에 연하게 넣기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('save', '새 PDF로 저장', () => extract(), { title: '고른 쪽(없으면 지금 보는 쪽)만 새 PDF로 저장' })}
+            {tool('image', '그림으로', () => setImgOpen(true), { title: '쪽을 JPG·PNG 그림 파일로 저장' })}
             {tool('split', '나누기', () => setSplitOpen(true), { title: '한 쪽씩, 몇 쪽씩, 원하는 범위대로 여러 PDF로 나누기' })}
             {tool('trash', '지우기', () => remove(), { danger: true })}
             <span className="hint">{sel.size ? `${sel.size}쪽 골랐어요` : 'Ctrl·Shift로 여러 쪽 고르기'}</span>
@@ -1279,6 +1302,7 @@ export function Workspace(props: WorkspaceProps) {
           </div>
         </div>
       )}
+      {imgOpen && <ImageExportDialog total={doc.pages.length} current={cur} selected={[...sel].sort((a, b) => a - b)} onClose={() => setImgOpen(false)} onExport={exportImages} />}
       {splitOpen && <SplitDialog total={doc.pages.length} selected={[...sel].sort((a, b) => a - b)} onClose={() => setSplitOpen(false)} onSplit={split} />}
       {markOpen === 'num' && (
         <PageNumberDialog info={doc.pages[0]} total={doc.pages.length} onClose={() => setMarkOpen(null)} onApply={async (o) => {

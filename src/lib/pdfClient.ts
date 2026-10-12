@@ -83,6 +83,8 @@ export class PdfClient {
   pages() { return this.call<PageInfo[]>('pages'); }
   /** 화면 그리기. prio: 1 보이는 쪽, 2 근처 쪽, 3 미리보기. signal 로 취소 */
   render(index: number, scale: number, opts: { prio?: number; signal?: AbortSignal } = {}) { return this.call<RenderResult>('render', { index, scale, rotate: 0 }, [], { prio: opts.prio ?? 1, signal: opts.signal }); }
+  /** 쪽을 그림 파일로 (흰 바탕) */
+  renderImage(index: number, dpi: number, format: 'png' | 'jpg') { return this.call<Uint8Array>('renderImage', { index, dpi, format }); }
   /** 모아 찍기 한 장 (PNG, 세로 용지) */
   renderSheet(indices: number[], per: 2 | 4, dpi: number, border: boolean) { return this.call<Uint8Array>('renderSheet', { indices, per, dpi, border }); }
   renderPng(index: number, scale: number, rotate = 0) { return this.call<Uint8Array>('renderPng', { index, scale, rotate }); }

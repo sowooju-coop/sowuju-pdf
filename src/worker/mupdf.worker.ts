@@ -157,6 +157,16 @@ async function renderSheet(indices: number[], per: 2 | 4, dpi: number, border: b
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** 그림으로 내보내기: 흰 바탕, PNG 또는 JPG */
+function renderImage(index: number, dpi: number, format: 'png' | 'jpg') {
+  const page = requireDoc().loadPage(index);
+  const pix = page.toPixmap(mupdf.Matrix.scale(dpi / 72, dpi / 72), mupdf.ColorSpace.DeviceRGB, false, true);
+  pix.setResolution(dpi, dpi);
+  const out = (format === 'jpg' ? pix.asJPEG(90) : pix.asPNG()).slice();
+  pix.destroy(); page.destroy();
+  return out;
+}
+
 function rotatePages(indices: number[], delta: number) {
   const d = requireDoc();
   for (const i of indices) {
@@ -274,6 +284,7 @@ const handlers: Record<string, (args: any) => any> = {
   pages: () => pageInfos(),
   render: ({ index, scale, rotate }) => render(index, scale, rotate),
   renderPng: ({ index, scale, rotate }) => renderPng(index, scale, rotate),
+  renderImage: ({ index, dpi, format }) => renderImage(index, dpi, format),
   renderSheet: ({ indices, per, dpi, border }) => renderSheet(indices, per, dpi, border),
   rotate: async ({ indices, delta }) => { await edit('돌리기', () => rotatePages(indices, delta)); return { pages: pageInfos(), ...history() }; },
   delete: async ({ indices }) => { await edit('지우기', () => deletePages(indices)); return { pages: pageInfos(), ...history() }; },
