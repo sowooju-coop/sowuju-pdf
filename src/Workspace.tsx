@@ -15,6 +15,8 @@ import { FormLayer } from './components/FormLayer';
 import { SelectLayer, type TextSelection } from './components/SelectLayer';
 import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
 import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
+import { OcrDialog, type OcrProgress } from './components/Ocr';
+import { recognize, stopOcr } from './lib/ocr';
 import { SplitDialog } from './components/SplitDialog';
 import { groupLabel, parseRanges } from './lib/ranges';
 import { FindBar, FindLayer, type FindState } from './components/Find';
@@ -154,6 +156,12 @@ export function Workspace(props: WorkspaceProps) {
   const [shrinkOpen, setShrinkOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
+  // 글자 읽기(OCR)
+  const [ocrOpen, setOcrOpen] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
+  const ocrStop = useRef(false);
+  const [textless, setTextless] = useState<number[] | null>(null);
+  const [scanHint, setScanHint] = useState(false);
   const [markOpen, setMarkOpen] = useState<'num' | 'wm' | null>(null);
   const [encrypted, setEncrypted] = useState(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -599,6 +607,62 @@ export function Workspace(props: WorkspaceProps) {
     finally { setBusy(null); }
   }, [client, doc, say]);
 
+  // 문서를 열면 스캔 문서인지 살펴보고, 글자가 없는 쪽이 절반 이상이면 글자 읽기를 권한다
+  const docKey = doc ? `${client.docId}` : '';
+  useEffect(() => {
+    setTextless(null); setScanHint(false);
+    if (!docKey || !doc) return;
+    let off = false;
+    client.textless().then((t) => { if (off) return; setTextless(t); if (t.length && t.length >= doc.pages.length / 2) setScanHint(true); }).catch(() => {});
+    return () => { off = true; };
+  }, [docKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openOcr = () => {
+    setScanHint(false);
+    setTextless(null);
+    client.textless().then(setTextless).catch(() => setTextless([]));
+    setOcrOpen(true);
+  };
+  /** 고른 쪽을 차례로 그림으로 그려 읽고, 다 읽으면 한 번에 넣는다 (되돌리기 한 번) */
+  const runOcr = useCallback(async (pages: number[]) => {
+    if (!doc) return;
+    await applyPlacedRef.current();
+    ocrStop.current = false;
+    setOcrProgress({ done: 0, total: pages.length, stopping: false });
+    const scale = 300 / 72;
+    const results: { index: number; scale: number; words: import('./lib/protocol').OcrWord[] }[] = [];
+    let words = 0, failed = '';
+    try {
+      // 그리기는 PDF 스레드에서 차례로, 읽기는 OCR 일꾼 여럿이 함께
+      let next = 0, done = 0;
+      const lanes = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+      await Promise.all(Array.from({ length: lanes }, async () => {
+        while (next < pages.length && !ocrStop.current) {
+          const i = pages[next++];
+          const png = await client.renderPng(i, scale);
+          const r = await recognize(png);
+          results.push({ index: i, scale, words: r.words });
+          words += r.words.length;
+          done++;
+          setOcrProgress((p) => (p ? { ...p, done } : p));
+        }
+      }));
+    } catch (e) { failed = (e as Error).message || String(e); }
+    try {
+      const got = results.filter((r) => r.words.length);
+      if (got.length) {
+        applyPages(await client.ocrText(got), { kind: 'mark', page: got[0].index }, got.map((r) => r.index));
+        setTextless((t) => (t ? t.filter((i) => !got.some((r) => r.index === i)) : t));
+      }
+      if (failed) say(`글자를 읽다가 멈췄어요. ${failed}`);
+      else if (!got.length) say('읽을 수 있는 글자를 찾지 못했어요.');
+      else say(`${got.length}쪽에서 낱말 ${words.toLocaleString()}개를 읽었어요. 이제 찾기(Ctrl+F)와 복사가 돼요.`);
+    } catch (e) { say(`읽은 글자를 넣지 못했어요. ${(e as Error).message}`); }
+    finally {
+      setOcrProgress(null); setOcrOpen(false);
+      void stopOcr();
+    }
+  }, [client, doc, say]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const reorder = useCallback(async (order: number[]) => {
     applyPages(await client.move(order), { kind: 'page', page: order.indexOf(cur) });
     setSel(new Set());
@@ -925,6 +989,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('save', '저장', doSave)}
             {tool('print', '인쇄', () => setPrintOpen(true))}
             {tool('image', '그림으로', () => setImgOpen(true), { title: '쪽을 JPG·PNG 그림 파일로 저장' })}
+            {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('fit', '폭에 맞추기', () => fitWidth(doc.pages))}
           </div>
@@ -957,6 +1022,8 @@ export function Workspace(props: WorkspaceProps) {
                 </div>
               )}
             </div>
+            <span className="vsep" aria-hidden="true" />
+            {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('sign', '서명', () => setMarkDialog('sign'), { title: '서명 그리기·불러오기' })}
             {tool('stamp', '직인', () => setMarkDialog('stamp'), { title: '직인 만들기·불러오기' })}
@@ -1119,6 +1186,13 @@ export function Workspace(props: WorkspaceProps) {
               ))}
             </div>
           </div>
+          {scanHint && !overview && !ocrOpen && (
+            <div className="scanhint" role="status">
+              <span>스캔한 문서 같아요. <b>글자 읽기</b>를 하면 찾기·복사가 돼요.</span>
+              <button className="ok" onClick={openOcr}>글자 읽기</button>
+              <button onClick={() => setScanHint(false)} aria-label="안내 닫기">닫기</button>
+            </div>
+          )}
           {find.open && !overview && (
             <FindBar state={find} onQuery={(q) => setFind((f) => ({ ...f, q }))} onMove={moveFind} onClose={() => setFind((f) => ({ ...f, open: false }))} />
           )}
@@ -1301,6 +1375,13 @@ export function Workspace(props: WorkspaceProps) {
             </div>
           </div>
         </div>
+      )}
+      {ocrOpen && (
+        <OcrDialog
+          total={doc.pages.length} current={cur} textless={textless} progress={ocrProgress}
+          onClose={() => setOcrOpen(false)} onRun={runOcr}
+          onStop={() => { ocrStop.current = true; setOcrProgress((p) => (p ? { ...p, stopping: true } : p)); }}
+        />
       )}
       {imgOpen && <ImageExportDialog total={doc.pages.length} current={cur} selected={[...sel].sort((a, b) => a - b)} onClose={() => setImgOpen(false)} onExport={exportImages} />}
       {splitOpen && <SplitDialog total={doc.pages.length} selected={[...sel].sort((a, b) => a - b)} onClose={() => setSplitOpen(false)} onSplit={split} />}

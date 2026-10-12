@@ -135,3 +135,6 @@ export interface WatermarkOptions {
   /** 없으면 모든 쪽 */
   pages?: number[];
 }
+
+/** 글자 읽기(OCR)로 찾은 낱말. 그림 픽셀 단위 */
+export interface OcrWord { text: string; x0: number; y0: number; x1: number; y1: number; base: number; lineH: number; /** 줄 끝 낱말이면 true (뒤에 띄어쓰기를 넣지 않음) */ last: boolean }

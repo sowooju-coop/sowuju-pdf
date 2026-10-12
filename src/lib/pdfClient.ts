@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { FormField, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { FormField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -101,6 +101,9 @@ export class PdfClient {
   place(items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[], texts: NewText[] = [], shapes: NewShape[] = []) {
     return this.call<EditResult>('place', { items, texts, shapes }, items.map((i) => i.png.buffer));
   }
+  /** 글자가 하나도 없는 쪽 (스캔한 쪽) */
+  textless() { return this.call<number[]>('textless'); }
+  ocrText(pages: { index: number; scale: number; words: OcrWord[] }[]) { return this.call<EditResult>('ocrText', { pages }); }
   pageNumbers(o: PageNumberOptions) { return this.call<EditResult>('pageNumbers', o); }
   watermark(o: WatermarkOptions) { return this.call<EditResult>('watermark', o); }
   lines(index: number) { return this.call<TextLine[]>('lines', { index }); }
