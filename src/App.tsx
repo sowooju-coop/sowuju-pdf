@@ -166,6 +166,21 @@ export default function App() {
   const applyPlacedRef = useRef(applyPlaced);
   applyPlacedRef.current = applyPlaced;
 
+  /** 놓은 서명·직인을 다른 모든 쪽의 같은 자리에도 놓는다 (쪽 크기가 다르면 비율로 맞춤) */
+  const placeOnAllPages = useCallback((id: string) => {
+    if (!doc) return;
+    const it = placed.find((x) => x.id === id);
+    if (!it) return;
+    const src = doc.pages[it.page];
+    const copies: Placed[] = [];
+    doc.pages.forEach((p, i) => {
+      if (i === it.page || placed.some((x) => x.page === i && x.src === it.src)) return;
+      copies.push({ ...it, id: newId(), page: i, x: (it.x / src.width) * p.width, y: (it.y / src.height) * p.height });
+    });
+    setPlaced((l) => [...l, ...copies]);
+    say(copies.length ? `${copies.length + 1}쪽 모두 같은 자리에 놓았어요. 확인한 뒤 적용을 누르세요.` : '이미 모든 쪽에 놓여 있어요.');
+  }, [doc, placed, say]);
+
   const pickMark = useCallback((m: Mark) => {
     setMarkDialog(null);
     setMode('view');
@@ -175,7 +190,7 @@ export default function App() {
   }, [say]);
 
   /** 파일들을 at 자리부터 차례로 넣는다 */
-  const insertFiles = useCallback(async (at: number, files: OpenedFile[]) => {
+  const insertFiles = useCallback(async (at: number, files: OpenedFile[], navigate = true) => {
     let pos = at, total = 0, first = -1, last: EditResult | null = null;
     const skipped: string[] = [];
     for (let k = 0; k < files.length; k++) {
@@ -193,7 +208,7 @@ export default function App() {
     if (last) {
       applyPages(last, { kind: 'page', page: at });
       setSel(new Set());
-      requestAnimationFrame(() => goToRef.current(first));
+      requestAnimationFrame(() => goToRef.current(navigate ? first : 0));
     }
     if (total) say(`${total}쪽을 ${first + 1}번째 자리에 넣었어요.${skipped.length ? ` 넣지 못한 파일: ${skipped.join(', ')}` : ''}`);
     else if (skipped.length) say(`넣지 못했어요: ${skipped.join(', ')}. 암호가 걸린 PDF는 먼저 따로 열어 주세요.`);
@@ -208,12 +223,12 @@ export default function App() {
       const ok = await load(files[first]);
       if (!ok) return;
       const rest = files.filter((_, i) => i !== first);
-      if (rest.length) await insertFiles(Number.MAX_SAFE_INTEGER, rest);
+      if (rest.length) await insertFiles(Number.MAX_SAFE_INTEGER, rest, false);
     } else {
       const r = await client.newDoc();
       setDoc({ name: '새 문서.pdf', size: 0, pages: r.pages });
       setDirty(true); setSavedAt(null); setHist({ canUndo: false, canRedo: false }); setLog({ done: [], undone: [] }); setMode('view'); setTab('page'); setOverview(false);
-      await insertFiles(0, files);
+      await insertFiles(0, files, false);
       requestAnimationFrame(() => setTimeout(() => fitWidthRef.current(), 50));
     }
   }, [client, load, insertFiles]);
@@ -626,6 +641,7 @@ export default function App() {
                       onRemove={(id) => { setPlaced((l) => l.filter((x) => x.id !== id)); setActivePlaced(null); }}
                       onApply={() => applyPlacedRef.current()}
                       onAgain={(id) => { const it = placed.find((x) => x.id === id); if (it) setPlacing({ id: newId(), kind: it.kind, src: it.src, w: it.w, h: it.h }); }}
+                      onAllPages={doc.pages.length > 1 ? placeOnAllPages : undefined}
                     />
                   )}
                   {mode === 'edit' && (
@@ -688,7 +704,8 @@ export default function App() {
                   <button className="btn sm" onClick={() => setPlaced((l) => l.map((x) => (x.id === activeItem.id ? { ...x, w: x.w * 1.1, h: x.h * 1.1 } : x)))}>크게</button>
                   <button className="btn sm iconly danger" aria-label="빼기" onClick={() => { setPlaced((l) => l.filter((x) => x.id !== activeItem.id)); setActivePlaced(null); }}><Icon name="trash" size={16} /></button>
                 </div>
-                <button className="btn navy" onClick={() => applyPlacedRef.current()}>적용해서 문서에 고정</button>
+                {doc.pages.length > 1 && <button className="btn" onClick={() => placeOnAllPages(activeItem.id)}>모든 쪽 같은 자리에 넣기</button>}
+                <button className="btn navy" onClick={() => applyPlacedRef.current()}>{placed.length > 1 ? `${placed.length}개 모두 적용` : '적용해서 문서에 고정'}</button>
               </section>
               <p className="note"><Icon name="shieldCheck" size={16} />적용하면 문서에 그림으로 고정돼요. 저장이나 인쇄를 누르면 자동으로 적용돼요.</p>
             </>

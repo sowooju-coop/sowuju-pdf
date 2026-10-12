@@ -99,62 +99,172 @@ export function dataUrlBytes(u: string) {
 
 export const STAMP_RED = '#C8102E';
 
+/** 서명 만들기에 쓰는 손글씨 글꼴 */
+export const SIGN_FONTS: { id: string; label: string; css: string; scale: number }[] = [
+  { id: 'pen', label: '펜글씨', css: "'NanumPenScript'", scale: 1.15 },
+  { id: 'brush', label: '붓글씨', css: "'NanumBrushScript'", scale: 1.15 },
+  { id: 'gaegu', label: '또박또박', css: "'Gaegu'", scale: 1 },
+  { id: 'dokdo', label: '힘찬 글씨', css: "'EastSeaDokdo'", scale: 1.25 },
+];
+
+export async function loadSignFonts() {
+  await Promise.all([...SIGN_FONTS.map((f) => document.fonts.load(`80px ${f.css}`)), document.fonts.load("700 40px 'NanumMyeongjo'")]).catch(() => undefined);
+}
+
+/** 입력한 이름을 손글씨 서명으로 그린다 (살짝 기울여 손으로 쓴 느낌) */
+export function drawTypedSign(name: string, fontCss: string, scale: number, color: string): HTMLCanvasElement | null {
+  const text = name.trim();
+  if (!text) return null;
+  const c = document.createElement('canvas');
+  c.width = 1400; c.height = 480;
+  const x = c.getContext('2d')!;
+  const size = 220 * scale;
+  x.font = `${size}px ${fontCss}, cursive`;
+  const w = x.measureText(text).width;
+  const fit = Math.min(1, 1250 / w);
+  x.translate(700, 290);
+  x.rotate(-0.06);
+  x.scale(fit, fit);
+  x.fillStyle = color;
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.fillText(text, 0, 0);
+  return trimCanvas(c, 12);
+}
+
+export type StampStyle = 'corp' | 'corpFilled' | 'square' | 'round';
+
+export const STAMP_STYLES: { id: StampStyle; label: string; hint: string }[] = [
+  { id: 'corp', label: '법인 원형 인감', hint: '테두리에 기관 이름, 가운데에 직함' },
+  { id: 'corpFilled', label: '원형 인감 (채움)', hint: '빨간 바탕에 흰 글자' },
+  { id: 'square', label: '네모 직인', hint: '기관 이름을 세로로' },
+  { id: 'round', label: '개인 도장', hint: '이름 두세 글자' },
+];
+
+const STAMP_FONT = "'NanumMyeongjo', serif";
+
+/** 칸에 맞춰 가로·세로를 따로 늘려 글자 하나를 그린다 (도장 글씨 느낌) */
+function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number) {
+  x.font = `700 100px ${STAMP_FONT}`;
+  x.textAlign = 'center';
+  x.textBaseline = 'alphabetic';
+  const m = x.measureText(chr);
+  const gw = (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) || 100;
+  const gh = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) || 100;
+  // 칸 모양대로 늘리되, 너무 납작하거나 홀쭉해지지 않게 한도를 둔다
+  let sx = (cw * 0.9) / gw, sy = (ch * 0.9) / gh;
+  if (sx > sy * 1.35) sx = sy * 1.35;
+  if (sy > sx * 1.9) sy = sx * 1.9;
+  x.save();
+  x.translate(cx, cy);
+  x.scale(sx, sy);
+  x.fillText(chr, (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  x.restore();
+}
+
+/** 글자들을 칸으로 나눠 채운다. vertical: 오른쪽 줄부터 위→아래(전통 직인), 아니면 위 줄부터 왼→오른쪽 */
+function fillGrid(x: CanvasRenderingContext2D, chars: string[], left: number, top: number, w: number, h: number, vertical: boolean) {
+  const n = chars.length;
+  if (!n) return;
+  const lines = n <= 2 ? (vertical ? n : 1) : n === 3 ? (vertical ? 1 : 3) : Math.ceil(Math.sqrt(n));
+  const per = Array.from({ length: lines }, (_, k) => Math.floor(n / lines) + (k < n % lines ? 1 : 0));
+  let k = 0;
+  per.forEach((cnt, line) => {
+    for (let j = 0; j < cnt; j++, k++) {
+      if (vertical) {
+        const cw = w / lines, ch = h / cnt;
+        fillChar(x, chars[k], left + w - cw * line - cw / 2, top + ch * j + ch / 2, cw, ch);
+      } else {
+        const ch = h / lines, cw = w / cnt;
+        fillChar(x, chars[k], left + cw * j + cw / 2, top + ch * line + ch / 2, cw, ch);
+      }
+    }
+  });
+}
+
+/** 둥근 테두리를 따라 글자를 놓는다. 맨 위(별 자리)를 비우고 시계 방향으로 */
+function ringText(x: CanvasRenderingContext2D, chars: string[], cx: number, cy: number, r: number, size: number, color: string) {
+  const n = chars.length;
+  if (!n) return;
+  const gap = 0.55; // 맨 위 비우는 각도(라디안)
+  const span = Math.min(Math.PI * 2 - gap * 2, n * (size * 1.08) / r);
+  const start = -Math.PI / 2 + gap + (Math.PI * 2 - gap * 2 - span) / 2;
+  x.fillStyle = color;
+  chars.forEach((chr, i) => {
+    const a = start + span * ((i + 0.5) / n);
+    x.save();
+    x.translate(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    x.rotate(a + Math.PI / 2);
+    fillChar(x, chr, 0, 0, size * 0.92, size);
+    x.restore();
+  });
+}
+
+function star(x: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  x.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.42 : r;
+    x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  x.closePath();
+  x.fill();
+}
+
 /**
- * 직인 그리기. square: 기관·법인 직인(네모), round: 개인 도장(동그라미).
- * 글자는 실제 도장처럼 오른쪽 줄부터 위에서 아래로 읽히게 놓는다.
+ * 직인 그리기.
+ * corp: 법인 원형 인감(테두리에 기관 이름, 가운데 원에 직함), corpFilled: 같은 모양의 빨간 채움형,
+ * square: 네모 직인(오른쪽 줄부터 세로), round: 개인 도장(동그라미).
  */
-export function drawStamp(text: string, shape: 'square' | 'round', color = STAMP_RED, size = 640): HTMLCanvasElement {
-  const chars = [...text.replace(/\s+/g, '')];
+export function drawStamp(style: StampStyle, name: string, inner = '', color = STAMP_RED, size = 640): HTMLCanvasElement {
+  const chars = [...name.replace(/\s+/g, '')];
+  const innerChars = [...inner.replace(/\s+/g, '')];
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const x = c.getContext('2d')!;
+  const mid = size / 2;
   x.fillStyle = color;
   x.strokeStyle = color;
-  const border = size * (shape === 'square' ? 0.055 : 0.05);
-  if (shape === 'square') {
-    x.lineWidth = border;
-    x.strokeRect(border / 2 + 6, border / 2 + 6, size - border - 12, size - border - 12);
-  } else {
-    x.lineWidth = border;
-    x.beginPath(); x.arc(size / 2, size / 2, size / 2 - border / 2 - 6, 0, Math.PI * 2); x.stroke();
+
+  if (style === 'square') {
+    const b = size * 0.055;
+    x.lineWidth = b;
+    x.strokeRect(b / 2 + 6, b / 2 + 6, size - b - 12, size - b - 12);
+    const pad = b + size * 0.06;
+    fillGrid(x, chars, pad, pad, size - pad * 2, size - pad * 2, true);
+    return c;
   }
-  if (!chars.length) return c;
-  const n = chars.length;
-  let cols: number, rows: number;
-  if (shape === 'round') {
-    cols = n <= 3 ? 1 : 2;
-    rows = Math.ceil(n / cols);
-  } else {
-    cols = Math.ceil(Math.sqrt(n));
-    rows = Math.ceil(n / cols);
+  if (style === 'round') {
+    const b = size * 0.05;
+    x.lineWidth = b;
+    x.beginPath(); x.arc(mid, mid, mid - b / 2 - 6, 0, Math.PI * 2); x.stroke();
+    const pad = size * 0.22;
+    fillGrid(x, chars, pad, pad, size - pad * 2, size - pad * 2, true);
+    return c;
   }
-  void rows;
-  const pad = shape === 'square' ? border + size * 0.06 : size * 0.2;
-  const inner = size - pad * 2;
-  const cw = inner / cols;
-  // 줄마다 글자 수를 고르게 나누고(앞줄이 많게), 글자가 적은 줄은 세로로 늘려 줄을 꽉 채운다
-  const perCol = Array.from({ length: cols }, (_, k) => Math.floor(n / cols) + (k < n % cols ? 1 : 0));
-  const place: { col: number; row: number; rowsInCol: number }[] = [];
-  perCol.forEach((cnt, col) => { for (let row = 0; row < cnt; row++) place.push({ col, row, rowsInCol: cnt }); });
-  x.textAlign = 'center';
-  x.textBaseline = 'alphabetic';
-  const font = "700 100px 'NanumMyeongjo', serif";
-  x.font = font;
-  chars.forEach((chr, k) => {
-    const { row, rowsInCol } = place[k];
-    const col = cols - 1 - place[k].col;
-    const ch = inner / rowsInCol;
-    const m = x.measureText(chr);
-    const gw = (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) || 100;
-    const gh = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) || 100;
-    // 칸을 꽉 채우도록 가로·세로를 따로 늘린다 (도장 글씨 느낌)
-    const sx = (cw * 0.9) / gw, sy = (ch * 0.9) / gh;
-    const cx = pad + cw * col + cw / 2, cy = pad + ch * row + ch / 2;
-    x.save();
-    x.translate(cx, cy);
-    x.scale(sx, sy);
-    x.fillText(chr, (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
-    x.restore();
-  });
+  // 법인 원형 인감
+  const R = mid - 8;
+  const filled = style === 'corpFilled';
+  const ink = filled ? '#FFFFFF' : color;
+  const innerR = R * 0.5;
+  if (filled) {
+    x.beginPath(); x.arc(mid, mid, R, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = ink; x.lineWidth = size * 0.012;
+    x.beginPath(); x.arc(mid, mid, R * 0.93, 0, Math.PI * 2); x.stroke();
+  } else {
+    x.lineWidth = size * 0.035;
+    x.beginPath(); x.arc(mid, mid, R - size * 0.0175, 0, Math.PI * 2); x.stroke();
+  }
+  x.strokeStyle = ink; x.fillStyle = ink;
+  x.lineWidth = size * (filled ? 0.016 : 0.028);
+  x.beginPath(); x.arc(mid, mid, innerR, 0, Math.PI * 2); x.stroke();
+  // 테두리 글자: 바깥 원과 안쪽 원 사이 띠의 가운데
+  const band = R * (filled ? 0.93 : 0.95) - innerR;
+  const ringR = innerR + band / 2;
+  const fontSize = Math.min(band * 0.62, (2 * Math.PI * ringR * 0.8) / Math.max(chars.length, 1) / 1.08);
+  star(x, mid, mid - ringR, band * 0.2);
+  ringText(x, chars, mid, mid, ringR, fontSize, ink);
+  x.fillStyle = ink;
+  const box = innerR * 1.25;
+  fillGrid(x, innerChars, mid - box / 2, mid - box / 2, box, box, false);
   return c;
 }

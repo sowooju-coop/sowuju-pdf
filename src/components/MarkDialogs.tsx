@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { cleanImage, drawStamp, fileToDataUrl, hasTransparency, loadImage, loadMarks, newId, removeMark, saveMark, STAMP_RED, trimCanvas, type CleanMode, type Mark, type MarkKind } from '../lib/library';
+import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_RED, STAMP_STYLES, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
 
 interface Props {
   kind: MarkKind;
@@ -141,43 +141,111 @@ function DrawPad({ onReady }: { onReady: (c: HTMLCanvasElement | null) => void }
   );
 }
 
-/** 직인 만들기 */
-function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, shape: 'square' | 'round') => void }) {
-  const [shape, setShape] = useState<'square' | 'round'>('square');
-  const [text, setText] = useState('소우주사회적협동조합인');
-  const [preview, setPreview] = useState('');
+/** 직인 만들기: 모양을 미리보기 목록에서 고른다 */
+function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: StampStyle) => void }) {
+  const [style, setStyle] = useState<StampStyle>('corp');
+  const [name, setName] = useState('소우주사회적협동조합');
+  const [inner, setInner] = useState('이사장');
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => { loadSignFonts().then(() => setFontsReady(true)); }, []);
   useEffect(() => {
-    let off = false;
-    document.fonts.load("700 40px 'NanumMyeongjo'").catch(() => undefined).then(() => {
-      if (off) return;
-      const c = drawStamp(text, shape, STAMP_RED);
-      setPreview(c.toDataURL('image/png'));
-      onReady(text.trim() ? c : null, shape);
-    });
-    return () => { off = true; };
-  }, [text, shape]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!fontsReady) return;
+    const out: Record<string, string> = {};
+    let chosen: HTMLCanvasElement | null = null;
+    for (const st of STAMP_STYLES) {
+      const c = drawStamp(st.id, name, inner, STAMP_RED, 400);
+      out[st.id] = c.toDataURL('image/png');
+      if (st.id === style) chosen = drawStamp(st.id, name, inner, STAMP_RED, 800);
+    }
+    setPreviews(out);
+    onReady(name.trim() ? chosen : null, style);
+  }, [name, inner, style, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  const corp = style === 'corp' || style === 'corpFilled';
   return (
-    <div className="makestamp">
-      <div className="checker stampprev"><img src={preview} alt="직인 미리보기" /></div>
-      <div className="stampform">
-        <div className="seg" role="radiogroup" aria-label="도장 모양">
-          <button role="radio" aria-checked={shape === 'square'} className={shape === 'square' ? 'on' : ''} onClick={() => { setShape('square'); if (text === '홍길동') setText('소우주사회적협동조합인'); }}>네모 (기관 직인)</button>
-          <button role="radio" aria-checked={shape === 'round'} className={shape === 'round' ? 'on' : ''} onClick={() => { setShape('round'); if (text === '소우주사회적협동조합인') setText('홍길동'); }}>동그라미 (개인 도장)</button>
+    <div className="makestamp2">
+      <div className="stampfields">
+        <div className="fieldcol">
+          <label className="fieldlabel" htmlFor="stampname">{corp ? '테두리에 들어갈 기관 이름' : style === 'round' ? '도장에 들어갈 이름' : '직인에 들어갈 글자'}</label>
+          <input id="stampname" className="field" value={name} maxLength={24} onChange={(e) => setName(e.target.value)} placeholder={style === 'round' ? '예: 홍길동' : '예: 소우주사회적협동조합'} />
         </div>
-        <label className="fieldlabel" htmlFor="stamptext">도장에 들어갈 글자</label>
-        <input id="stamptext" className="field" value={text} maxLength={20} onChange={(e) => setText(e.target.value)} placeholder={shape === 'square' ? '예: 소우주사회적협동조합인' : '예: 홍길동'} />
-        <p className="small">{shape === 'square' ? '기관 이름 끝에 "인"을 붙이는 게 보통이에요. 글자는 오른쪽 줄부터 위에서 아래로 읽혀요.' : '이름 두세 글자가 가장 잘 어울려요.'}</p>
-        <p className="small warnnote">만든 직인은 문서 작성을 돕는 용도예요. 법적 효력이 필요한 서류에는 기관에 등록된 실제 인감을 쓰세요.</p>
+        {corp && (
+          <div className="fieldcol narrow">
+            <label className="fieldlabel" htmlFor="stampinner">가운데 글자</label>
+            <input id="stampinner" className="field" value={inner} maxLength={6} onChange={(e) => setInner(e.target.value)} placeholder="예: 대표이사" />
+          </div>
+        )}
       </div>
+      <div className="stampgallery" role="radiogroup" aria-label="도장 모양">
+        {STAMP_STYLES.map((st) => (
+          <button key={st.id} role="radio" aria-checked={style === st.id} className={`stampcard${style === st.id ? ' on' : ''}`} onClick={() => setStyle(st.id)}>
+            <span className="checker sc-prev">{previews[st.id] && <img src={previews[st.id]} alt="" />}</span>
+            <b>{st.label}</b>
+            <small>{st.hint}</small>
+          </button>
+        ))}
+      </div>
+      <p className="small warnnote">만든 직인은 문서 작성을 돕는 용도예요. 법적 효력이 필요한 서류에는 기관에 등록된 실제 인감을 쓰세요.</p>
+    </div>
+  );
+}
+
+/** 서명 만들기: 이름을 입력하면 손글씨 서명 후보를 보여 준다 */
+function TypeSign({ onReady }: { onReady: (c: HTMLCanvasElement | null) => void }) {
+  const [name, setName] = useState('');
+  const [font, setFont] = useState(SIGN_FONTS[0].id);
+  const [color, setColor] = useState('#111827');
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => { loadSignFonts().then(() => setFontsReady(true)); }, []);
+  useEffect(() => {
+    if (!fontsReady) return;
+    const out: Record<string, string> = {};
+    let chosen: HTMLCanvasElement | null = null;
+    for (const f of SIGN_FONTS) {
+      const c = drawTypedSign(name || '홍길동', f.css, f.scale, color);
+      if (c) out[f.id] = c.toDataURL('image/png');
+      if (f.id === font && name.trim()) chosen = c;
+    }
+    setPreviews(out);
+    onReady(chosen);
+  }, [name, font, color, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="typesign">
+      <div className="stampfields">
+        <div className="fieldcol">
+          <label className="fieldlabel" htmlFor="signname">이름</label>
+          <input id="signname" className="field" value={name} maxLength={16} autoFocus onChange={(e) => setName(e.target.value)} placeholder="이름을 입력하세요 (예: 홍길동)" />
+        </div>
+        <div className="fieldcol narrow">
+          <span className="fieldlabel">색</span>
+          <div className="seg" role="radiogroup" aria-label="글씨 색">
+            {[['#111827', '검정'], ['#1D3FA8', '파랑']].map(([c, l]) => (
+              <button key={c} role="radio" aria-checked={color === c} className={color === c ? 'on' : ''} onClick={() => setColor(c)}><span className="dotc" style={{ background: c }} />{l}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="signgallery" role="radiogroup" aria-label="글씨체">
+        {SIGN_FONTS.map((f) => (
+          <button key={f.id} role="radio" aria-checked={font === f.id} className={`signcard${font === f.id ? ' on' : ''}${name ? '' : ' sample'}`} onClick={() => setFont(f.id)}>
+            <span className="sg-prev">{previews[f.id] && <img src={previews[f.id]} alt="" />}</span>
+            <small>{f.label}</small>
+          </button>
+        ))}
+      </div>
+      {!name && <p className="small">이름을 입력하면 내 이름으로 바뀌어요. 마음에 드는 글씨체를 고르세요.</p>}
     </div>
   );
 }
 
 export function MarkDialog({ kind, onClose, onPick }: Props) {
-  const tabs = kind === 'sign' ? [['draw', '직접 그리기'], ['photo', '사진·그림 파일에서']] : [['make', '직인 만들기'], ['photo', '사진·그림 파일에서']];
+  const tabs = kind === 'sign'
+    ? [['draw', '직접 그리기'], ['type', '서명 만들기'], ['photo', '사진·그림 파일에서']]
+    : [['make', '직인 만들기'], ['photo', '사진·그림 파일에서']];
   const [tab, setTab] = useState(tabs[0][0]);
   const [ready, setReady] = useState<HTMLCanvasElement | null>(null);
-  const [shape, setShape] = useState<'square' | 'round'>('square');
+  const [style, setStyle] = useState<StampStyle>('corp');
   const [remember, setRemember] = useState(true);
   const [version] = useState(0);
 
@@ -188,7 +256,7 @@ export function MarkDialog({ kind, onClose, onPick }: Props) {
     const ratio = ready.height / ready.width;
     let w: number;
     if (kind === 'sign') w = 36 * PT_PER_MM;
-    else if (tab === 'make') w = (shape === 'square' ? 24 : 15) * PT_PER_MM;
+    else if (tab === 'make') w = (style === 'round' ? 15 : style === 'square' ? 24 : 26) * PT_PER_MM;
     else w = 24 * PT_PER_MM;
     let h = w * ratio;
     if (kind === 'sign' && h > 18 * PT_PER_MM) { h = 18 * PT_PER_MM; w = h / ratio; }
@@ -211,7 +279,8 @@ export function MarkDialog({ kind, onClose, onPick }: Props) {
           ))}
         </div>
         {tab === 'draw' && <DrawPad onReady={setReady} />}
-        {tab === 'make' && <MakeStamp onReady={(c, s) => { setReady(c); setShape(s); }} />}
+        {tab === 'type' && <TypeSign onReady={setReady} />}
+        {tab === 'make' && <MakeStamp onReady={(c, st) => { setReady(c); setStyle(st); }} />}
         {tab === 'photo' && <FromPhoto kind={kind} onReady={setReady} />}
         <div className="acts spread">
           <label className="chk"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> 보관함에 저장해서 다음에도 쓰기</label>

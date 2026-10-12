@@ -2,6 +2,10 @@
 @font-face{font-family:'Pretendard';src:url('/fonts/Pretendard-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
 @font-face{font-family:'NanumMyeongjo';src:url('/fonts/NanumMyeongjo-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
 @font-face{font-family:'NanumMyeongjo';src:url('/fonts/NanumMyeongjo-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+@font-face{font-family:'NanumPenScript';src:url('/fonts/NanumPenScript-Regular.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'NanumBrushScript';src:url('/fonts/NanumBrushScript-Regular.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'Gaegu';src:url('/fonts/Gaegu-Regular.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'EastSeaDokdo';src:url('/fonts/EastSeaDokdo-Regular.ttf') format('truetype');font-display:swap}
 
 /* 디자인 규칙: 남색은 틀(로고·제목·저장), 청록은 "지금 누를 곳·선택된 것" 하나에만. 구분은 선보다 여백과 옅은 그림자로 */
 :root{
@@ -309,7 +313,7 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .statuspill button.ok:hover{background:#0C655E}
 .markprev{height:96px;border-radius:var(--r-md);display:grid;place-items:center;padding:10px}
 .markprev img{max-width:100%;max-height:100%}
-.inspector section>.btn.navy{width:100%}
+.inspector section>.btn{width:100%}
 
 /* 서명·직인 창 */
 .markdlg{width:min(640px,100%);gap:14px}
@@ -352,3 +356,26 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .acts.spread{justify-content:space-between;align-items:center}
 .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
 .chk input{accent-color:var(--teal);width:16px;height:16px}
+
+/* 직인 고르기·서명 만들기 */
+.markdlg{max-height:calc(100vh - 32px);overflow-y:auto}
+.stampfields{display:flex;gap:12px;flex-wrap:wrap}
+.fieldcol{flex:1 1 260px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.fieldcol.narrow{flex:0 1 180px}
+.stampgallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stampcard{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 8px 12px;border:0;border-radius:var(--r-md);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line2);text-align:center}
+.stampcard:hover{box-shadow:inset 0 0 0 1px var(--teal)}
+.stampcard.on{box-shadow:inset 0 0 0 2px var(--teal);background:var(--teal-tint)}
+.sc-prev{width:100%;aspect-ratio:1;display:grid;place-items:center;padding:8px;margin-bottom:4px}
+.sc-prev img{width:100%;height:100%;object-fit:contain}
+.stampcard b{font-size:13px}
+.stampcard small{font-size:11.5px;color:var(--muted);line-height:1.35}
+.signgallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.signcard{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;border:0;border-radius:var(--r-md);background:#fff;box-shadow:inset 0 0 0 1px var(--line2)}
+.signcard:hover{box-shadow:inset 0 0 0 1px var(--teal)}
+.signcard.on{box-shadow:inset 0 0 0 2px var(--teal);background:var(--teal-tint)}
+.signcard.sample .sg-prev{opacity:.45}
+.sg-prev{height:84px;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.sg-prev img{max-width:100%;max-height:84px;object-fit:contain}
+.signcard small{font-size:12px;color:var(--muted)}
+@media (max-width:640px){.stampgallery{grid-template-columns:repeat(2,minmax(0,1fr))}}

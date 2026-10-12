@@ -28,12 +28,14 @@ interface Props {
   onRemove: (id: string) => void;
   onApply: () => void;
   onAgain: (id: string) => void;
+  /** 모든 쪽의 같은 자리에 (쪽이 2개 이상일 때만) */
+  onAllPages?: (id: string) => void;
 }
 
 const MIN = 12;
 
 /** 서명·직인을 놓고 옮기고 크기를 바꾸는 층. 적용하기 전까지는 PDF에 쓰지 않는다 */
-export function PlaceLayer({ index, info, zoom, items, activeId, placing, onPlace, onChange, onSelect, onRemove, onApply, onAgain }: Props) {
+export function PlaceLayer({ index, info, zoom, items, activeId, placing, onPlace, onChange, onSelect, onRemove, onApply, onAgain, onAllPages }: Props) {
   const layer = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ id: string; kind: 'move' | 'size'; sx: number; sy: number; o: Placed; pid: number } | null>(null);
@@ -112,6 +114,7 @@ export function PlaceLayer({ index, info, zoom, items, activeId, placing, onPlac
           onPointerDown={(e) => e.stopPropagation()}
         >
           <button className="mb-no" onClick={() => onAgain(active.id)}><Icon name="plus" size={15} />하나 더</button>
+          {onAllPages && <button className="mb-no" onClick={() => onAllPages(active.id)} title="모든 쪽의 같은 자리에 넣기"><Icon name="pages" size={15} />모든 쪽에</button>}
           <button className="mb-no" onClick={() => onRemove(active.id)}><Icon name="trash" size={15} />빼기</button>
           <span className="mb-sep" aria-hidden="true" />
           <button className="mb-ok" onClick={onApply}>적용<small>Enter</small></button>
