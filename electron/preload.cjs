@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('sowuju', {
     return () => ipcRenderer.removeListener('open-path', fn);
   },
   takePending: () => ipcRenderer.invoke('take-pending'),
+  /** "소우주 PDF" 프린터로 꺼져 있는 동안 인쇄한 문서들 */
+  takePrinted: () => ipcRenderer.invoke('take-printed'),
+  printerStatus: () => ipcRenderer.invoke('printer-status'),
+  printerInstall: () => ipcRenderer.invoke('printer-install'),
+  printerRemove: () => ipcRenderer.invoke('printer-remove'),
   /** 끌어다 놓은 한글·워드·엑셀 파일을 PDF로 바꿔 열기 */
   convertPath: (p) => ipcRenderer.invoke('convert-path', p),
   /** 오래 걸리는 일(문서 바꾸기)을 하는 중이면 안내 글, 끝나면 null */

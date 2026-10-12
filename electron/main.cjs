@@ -43,6 +43,31 @@ function createWindow() {
 }
 
 const { convertToPdf, isOffice, OFFICE_EXT } = require('./convert.cjs');
+const { printerStatus, printerInstall, printerRemove, watchPrinted } = require('./printer.cjs');
+
+// "소우주 PDF" 프린터로 인쇄한 문서: 화면이 준비되기 전에 온 것은 모아 두었다가 화면이 가져간다
+const printedQueue = [];
+let printedReady = false;
+async function readPrinted(p) {
+  return { name: '인쇄한 문서.pdf', bytes: new Uint8Array(await fs.readFile(p)), printed: true };
+}
+function onPrinted(p) {
+  if (!printedReady || !win) { printedQueue.push(p); return; }
+  readPrinted(p).then((f) => {
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    win.webContents.send('open-path', f);
+  }).catch(() => {});
+}
+ipcMain.handle('take-printed', async () => {
+  printedReady = true;
+  const out = [];
+  for (const p of printedQueue.splice(0)) { try { out.push(await readPrinted(p)); } catch { /* 지워졌으면 넘어간다 */ } }
+  return out;
+});
+ipcMain.handle('printer-status', () => printerStatus());
+ipcMain.handle('printer-install', async () => { try { return await printerInstall(); } catch (e) { return { error: String(e.message || e) }; } });
+ipcMain.handle('printer-remove', async () => { try { return await printerRemove(); } catch (e) { return { error: String(e.message || e) }; } });
 
 /**
  * 경로의 파일을 읽는다. 한글·워드·엑셀·파워포인트면 PDF로 바꿔서 돌려준다
@@ -113,6 +138,7 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();
   setupUpdater(() => win);
+  watchPrinted(onPrinted);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

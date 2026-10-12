@@ -25,3 +25,4 @@ This program will not transfer any information to other networked systems unless
 
 - 최근 문서 목록(파일 경로·이름·쪽수), 서명·직인 보관함, 글자 모양 등 설정. 프로그램을 지우면 함께 지워지며, 보관함은 프로그램 안에서도 지울 수 있습니다.
 - Recent file list, saved signatures/stamps and preferences, stored locally only.
+- **'소우주 PDF' 프린터**: 인쇄한 문서는 이 컴퓨터의 `%LOCALAPPDATA%\SowujuPDF\PrintInbox` 폴더에만 저장되고, 30일이 지나면 지웁니다.

@@ -19,7 +19,11 @@ export interface OpenedFile {
   path?: string;
   /** 한글·워드 등을 PDF로 바꿔 연 경우 원래 파일 이름 */
   convertedFrom?: string;
+  /** "소우주 PDF" 프린터로 인쇄되어 온 문서 */
+  printed?: boolean;
 }
+
+export interface PrinterStatus { supported: boolean; installed: boolean; driver?: boolean; portOk?: boolean; error?: string }
 
 export interface RecentFile {
   path: string;
@@ -31,6 +35,10 @@ export interface RecentFile {
 interface AppBridge {
   openFile(): Promise<OpenedFile | { error: string } | null>;
   convertPath(path: string): Promise<OpenedFile | { error: string }>;
+  takePrinted(): Promise<OpenedFile[]>;
+  printerStatus(): Promise<PrinterStatus>;
+  printerInstall(): Promise<PrinterStatus | { error: string }>;
+  printerRemove(): Promise<PrinterStatus | { error: string }>;
   onBusy(cb: (msg: string | null) => void): () => void;
   openFiles(): Promise<OpenedFile[]>;
   saveFile(name: string, bytes: Uint8Array): Promise<string | null>;
@@ -149,6 +157,13 @@ export async function saveFiles(title: string, files: { name: string; bytes: Uin
   }
   return { dir: '내려받기 폴더', count: files.length };
 }
+
+/** "소우주 PDF" 프린터 (Windows 설치형만) */
+export const printerApi = {
+  status: (): Promise<PrinterStatus> => window.sowuju?.printerStatus?.() ?? Promise.resolve({ supported: false, installed: false }),
+  install: () => window.sowuju!.printerInstall(),
+  remove: () => window.sowuju!.printerRemove(),
+};
 
 export const recentList = (): Promise<RecentFile[]> => window.sowuju?.recentList() ?? Promise.resolve([]);
 export const recentAdd = (item: Omit<RecentFile, 'openedAt'>) => window.sowuju?.recentAdd(item);

@@ -710,3 +710,4 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .cleanprev figure{margin:0;display:grid;gap:4px;justify-items:center}
 .cleanprev img,.cleanprev .ph{width:100%;aspect-ratio:210/297;object-fit:contain;background:#fff;border:1px solid #DDE3E9;border-radius:3px}
 .cleanprev figcaption{font-size:11.5px;color:var(--muted);text-align:center}
+.prnset{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding-left:10px;border-left:1px solid var(--line,#DDE3E9)}

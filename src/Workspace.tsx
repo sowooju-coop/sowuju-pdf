@@ -238,7 +238,7 @@ export function Workspace(props: WorkspaceProps) {
       setSel(new Set());
       setCur(0);
       // 한글·워드에서 바꾼 문서는 아직 PDF 파일로 저장된 적이 없다
-      setDirty(!!file.convertedFrom);
+      setDirty(!!file.convertedFrom || !!file.printed);
       setSavedAt(null);
       setHist({ canUndo: false, canRedo: false });
       setLog({ done: [], undone: [] });
@@ -258,6 +258,7 @@ export function Workspace(props: WorkspaceProps) {
       if (act === 'privacy') setTimeout(() => startPrivacyRef.current(), 0);
       client.info().then((i) => setEncrypted(!!i.encryption && i.encryption !== 'None')).catch(() => setEncrypted(false));
       setFieldCount(0);
+      if (file.printed) say('다른 프로그램에서 "소우주 PDF"로 인쇄한 문서예요. 저장하면 원하는 곳에 PDF로 저장돼요.');
       if (file.convertedFrom) say(`"${file.convertedFrom}"을 PDF로 바꿔 열었어요. 저장하면 PDF 파일로 따로 저장돼요.`);
       client.fieldCount().then((n) => { setFieldCount(n); if (n) say(`이 문서에는 입력칸이 ${n}개 있어요. 칸을 눌러 바로 쓰세요.`); }).catch(() => undefined);
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });

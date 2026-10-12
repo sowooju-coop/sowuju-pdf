@@ -1,3 +1,4 @@
+import { printerApi, type PrinterStatus } from '../lib/host';
 import { useEffect, useState } from 'react';
 import type { UpdateState } from '../lib/host';
 import { Icon } from './Icon';
@@ -34,6 +35,31 @@ export function UpdateBar() {
 }
 
 /** 시작 화면 아래: 지금 버전과 업데이트 확인 */
+/** "소우주 PDF" 프린터 추가·빼기 (Windows 설치형만 보임) */
+function PrinterSetting() {
+  const [st, setSt] = useState<PrinterStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  useEffect(() => { printerApi.status().then(setSt).catch(() => {}); }, []);
+  if (!st?.supported) return null;
+  const run = async (fn: () => Promise<PrinterStatus | { error: string }>, ok: string) => {
+    setBusy(true); setMsg('Windows 허용 창이 뜨면 "예"를 눌러 주세요…');
+    try {
+      const r = await fn();
+      if ('error' in r && r.error && !('supported' in r)) setMsg(r.error);
+      else { setSt(r as PrinterStatus); setMsg(ok); }
+    } finally { setBusy(false); }
+  };
+  return (
+    <span className="prnset" title="한글·워드·엑셀 등의 인쇄 창에서 '소우주 PDF'를 고르면 이 프로그램으로 열려요">
+      {st.installed
+        ? <>프린터 목록에 있어요 <button className="linkbtn" disabled={busy} onClick={() => run(printerApi.remove, '프린터 목록에서 뺐어요.')}>빼기</button></>
+        : <button className="linkbtn" disabled={busy} onClick={() => run(printerApi.install, '이제 다른 프로그램의 인쇄 창에서 "소우주 PDF"를 고를 수 있어요.')}>프린터 목록에 '소우주 PDF' 넣기</button>}
+      {msg && <span className="muted">{msg}</span>}
+    </span>
+  );
+}
+
 export function VersionInfo() {
   const st = useUpdate();
   const [ver, setVer] = useState('');
@@ -56,6 +82,7 @@ export function VersionInfo() {
         <input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); window.sowuju?.setAutoUpdate(e.target.checked); }} />자동 확인
       </label>
       {msg && <span className="muted">{msg}</span>}
+      <PrinterSetting />
     </span>
   );
 }

@@ -94,7 +94,9 @@ export default function App() {
       else openInNewTab(f);
     };
     const off = host.onOpenPath(open);
-    host.takePending().then((f) => { if (f) open(f); });
+    host.takePending().then((f) => { if (f) open(f); })
+      // 꺼져 있는 동안 "소우주 PDF" 프린터로 인쇄한 문서들
+      .then(() => host.takePrinted?.()).then((list) => { for (const f of list ?? []) openInNewTab(f); });
     return off;
   }, [openInNewTab]);
 
