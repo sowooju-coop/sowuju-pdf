@@ -17,4 +17,12 @@ contextBridge.exposeInMainWorld('sowuju', {
   recentAdd: (item) => ipcRenderer.invoke('recent-add', item),
   openRecent: (p) => ipcRenderer.invoke('open-recent', p),
   setZoom: (f) => webFrame.setZoomFactor(f),
+  /** 저장하지 않은 내용이 있으면 문서 이름, 없으면 null (창을 닫을 때 물어보기 위해) */
+  setUnsaved: (name) => ipcRenderer.send('set-unsaved', name),
+  onSaveBeforeClose: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('save-before-close', fn);
+    return () => ipcRenderer.removeListener('save-before-close', fn);
+  },
+  closeNow: () => ipcRenderer.send('close-now'),
 });

@@ -31,6 +31,9 @@ interface AppBridge {
   recentAdd(item: Omit<RecentFile, 'openedAt'>): Promise<void>;
   openRecent(path: string): Promise<OpenedFile | null>;
   setZoom(factor: number): void;
+  setUnsaved(name: string | null): void;
+  onSaveBeforeClose(cb: () => void): () => void;
+  closeNow(): void;
 }
 
 declare global {

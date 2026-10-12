@@ -1,3 +1,4 @@
+import type { PrivacyHit } from './privacy';
 import type { NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
@@ -100,4 +101,12 @@ export class PdfClient {
   undo() { return this.call<EditResult>('undo'); }
   redo() { return this.call<EditResult>('redo'); }
   save() { return this.call<Uint8Array>('save'); }
+
+  // 보호 메뉴
+  findPrivate(rrnBackOnly: boolean, search: string[]) { return this.call<{ hits: PrivacyHit[]; noText: number[] }>('findPrivate', { rrnBackOnly, search }); }
+  redact(areas: { page: number; rects: [number, number, number, number][] }[], clearInfo: boolean) { return this.call<EditResult>('redact', { areas, clearInfo }); }
+  /** password 가 빈 문자열이면 암호를 푼 파일 */
+  saveProtected(password: string, printOnly: boolean) { return this.call<Uint8Array>('saveProtected', { password, printOnly }); }
+  shrink(level: 'light' | 'normal' | 'strong') { return this.call<{ bytes: Uint8Array; images: number }>('shrink', { level }); }
+  info() { return this.call<{ encryption: string; author: string; creator: string; producer: string }>('info'); }
 }

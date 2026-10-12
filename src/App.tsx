@@ -299,20 +299,37 @@ export default function App() {
     }
   }, [client, load, insertFiles]);
 
-  const doSave = useCallback(async () => {
-    if (!doc) return;
+  /** 저장하고, 실제로 저장했으면 true */
+  const doSave = useCallback(async (): Promise<boolean> => {
+    if (!doc) return false;
     await applyPlacedRef.current();
     setBusy('저장하는 중…');
     try {
       const bytes = await client.save();
       const where = await saveFile(`${baseName(doc.name)}${dirty ? '_편집' : ''}.pdf`, bytes);
-      if (where) { say('저장했어요.'); setDirty(false); setSavedAt(new Date()); }
+      if (where) { say('저장했어요.'); setDirty(false); setSavedAt(new Date()); return true; }
+      return false;
     } catch (e) {
       say(`저장하지 못했어요. ${(e as Error).message}`);
+      return false;
     } finally {
       setBusy(null);
     }
   }, [client, doc, dirty, say]);
+
+  // 창을 닫을 때 저장 안 한 내용이 있으면 묻는다 (설치형은 운영체제 창, 브라우저는 떠나기 경고)
+  const unsaved = !!doc && (dirty || placed.length > 0 || texts.length > 0 || shapes.length > 0);
+  useEffect(() => {
+    const host = window.sowuju;
+    if (host) { host.setUnsaved(unsaved ? doc!.name : null); return; }
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved, doc]);
+  const doSaveRef = useRef(doSave);
+  doSaveRef.current = doSave;
+  useEffect(() => window.sowuju?.onSaveBeforeClose(async () => { if (await doSaveRef.current()) window.sowuju?.closeNow(); }), []);
 
   const closeDoc = useCallback(() => {
     setConfirmClose(false);

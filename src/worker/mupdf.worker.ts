@@ -4,6 +4,7 @@ import * as mupdf from 'mupdf';
 import type { NewShape, NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
+import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
 let doc: mupdf.PDFDocument | null = null;
@@ -31,6 +32,29 @@ async function edit<T>(name: string, fn: () => T | Promise<T>): Promise<T> {
 let fontsAdded = false;
 function snapshot() {
   return requireDoc().saveToBuffer('').asUint8Array().slice();
+}
+/**
+ * 저장용 바이트. 새로 넣은 글꼴은 쓴 글자만 남겨 파일 크기를 줄인다.
+ * 사본을 만드는 대신 작업 기록 안에서 줄이고 저장한 뒤 그 작업을 버려서 원래대로 돌린다.
+ * 다시 하기가 남아 있으면 새 작업을 시작하는 순간 사라지므로 그때만 사본으로 처리
+ */
+function saveBytes(opts: string) {
+  const d = requireDoc();
+  if (!fontsAdded) return d.saveToBuffer(opts).asUint8Array().slice();
+  if (d.canRedo()) {
+    const work = mupdf.Document.openDocument(snapshot(), 'application/pdf') as mupdf.PDFDocument;
+    try { work.subsetFonts(); } catch { /* 그대로 둔다 */ }
+    const out = work.saveToBuffer(opts).asUint8Array().slice();
+    work.destroy();
+    return out;
+  }
+  d.beginOperation('저장용 글꼴 줄이기');
+  try {
+    try { d.subsetFonts(); } catch { /* 부분 내장이 안 되는 글꼴은 그대로 둔다 */ }
+    return d.saveToBuffer(opts).asUint8Array().slice();
+  } finally {
+    d.abandonOperation();
+  }
 }
 const history = () => ({ canUndo: requireDoc().canUndo(), canRedo: requireDoc().canRedo() });
 
@@ -236,27 +260,31 @@ const handlers: Record<string, (args: any) => any> = {
   replace: async (req: ReplaceRequest) => { await edit('글자 고치기', () => replaceText(requireDoc(), req)); if (req.text.trim()) fontsAdded = true; return { ...history() }; },
   undo: () => { const d = requireDoc(); if (d.canUndo()) d.undo(); return { pages: pageInfos(), ...history() }; },
   redo: () => { const d = requireDoc(); if (d.canRedo()) d.redo(); return { pages: pageInfos(), ...history() }; },
-  save: () => {
-    // 새 글꼴을 넣지 않았으면 사본 없이 바로 저장한다
-    if (!fontsAdded) return requireDoc().saveToBuffer('garbage,compress').asUint8Array().slice();
-    // 새로 넣은 글꼴은 쓴 글자만 남겨 파일 크기를 줄인다.
-    // 사본을 만드는 대신 작업 기록 안에서 줄이고 저장한 뒤 그 작업을 버려서 원래대로 돌린다.
-    // 다시 하기가 남아 있으면 새 작업을 시작하는 순간 사라지므로 그때만 사본으로 처리
-    const d = requireDoc();
-    if (d.canRedo()) {
-      const work = mupdf.Document.openDocument(snapshot(), 'application/pdf') as mupdf.PDFDocument;
-      try { work.subsetFonts(); } catch { /* 그대로 둔다 */ }
-      const out = work.saveToBuffer('garbage,compress').asUint8Array().slice();
-      work.destroy();
-      return out;
-    }
-    d.beginOperation('저장용 글꼴 줄이기');
+  save: () => saveBytes('garbage,compress'),
+  /** 암호를 걸어 저장한 파일 (작업 중인 문서는 그대로) */
+  saveProtected: ({ password, printOnly }: { password: string; printOnly: boolean }) => saveBytes(`garbage,compress,${password ? encryptOptions(password, printOnly) : 'encrypt=none'}`),
+  /** 그림을 줄이고 압축한 사본 */
+  shrink: ({ level }: { level: ShrinkLevel }) => {
+    const work = mupdf.Document.openDocument(snapshot(), 'application/pdf') as mupdf.PDFDocument;
     try {
-      try { d.subsetFonts(); } catch { /* 부분 내장이 안 되는 글꼴은 그대로 둔다 */ }
-      return d.saveToBuffer('garbage,compress').asUint8Array().slice();
+      const images = shrinkImages(work, level);
+      try { work.subsetFonts(); } catch { /* 그대로 둔다 */ }
+      const bytes = work.saveToBuffer('garbage=deduplicate,compress,compress-fonts,compress-images').asUint8Array().slice();
+      return { bytes, images };
     } finally {
-      d.abandonOperation();
+      work.destroy();
     }
+  },
+  findPrivate: ({ rrnBackOnly, search }: { rrnBackOnly: boolean; search: string[] }) => findPrivate(requireDoc(), rrnBackOnly, search),
+  redact: async ({ areas, clearInfo }: { areas: { page: number; rects: [number, number, number, number][] }[]; clearInfo: boolean }) => {
+    await edit('개인정보 지우기', () => { redactAreas(requireDoc(), areas); if (clearInfo) clearDocInfo(requireDoc()); });
+    return { ...history() };
+  },
+  /** 문서 정보: 처음 열었을 때 암호가 걸려 있었는지, 작성자 등 */
+  info: () => {
+    const d = requireDoc();
+    const get = (k: string) => { try { return d.getMetaData(k) || ''; } catch { return ''; } };
+    return { encryption: get('encryption'), author: get('info:Author'), creator: get('info:Creator'), producer: get('info:Producer') };
   },
 };
 
@@ -267,6 +295,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   try {
     const result = await handlers[op](args);
     if (result?.bitmap) transfer.push(result.bitmap);
+    else if (result?.bytes instanceof Uint8Array) transfer.push(result.bytes.buffer);
     else if (result instanceof Uint8Array) transfer.push(result.buffer);
     res = { id, ok: true, result };
   } catch (err) {

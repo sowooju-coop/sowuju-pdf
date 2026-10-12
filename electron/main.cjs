@@ -32,6 +32,7 @@ function createWindow() {
       sandbox: true,
     },
   });
+  guardClose(win);
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -92,6 +93,31 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+// 저장하지 않은 내용이 있으면 닫기 전에 묻는다. 화면 쪽이 바뀐 내용이 있는지 알려 준다
+let unsaved = null; // 바뀐 내용이 있으면 문서 이름
+let closing = false;
+ipcMain.on('set-unsaved', (_e, name) => { unsaved = name || null; });
+ipcMain.on('close-now', () => { closing = true; win?.close(); });
+function guardClose(w) {
+  w.on('close', (e) => {
+    if (closing || !unsaved) return;
+    e.preventDefault();
+    dialog.showMessageBox(w, {
+      type: 'question',
+      title: '소우주 PDF',
+      message: `"${unsaved}"의 바뀐 내용을 저장할까요?`,
+      detail: '저장하지 않고 닫으면 고친 내용이 사라져요.',
+      buttons: ['저장', '저장 안 함', '취소'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    }).then(({ response }) => {
+      if (response === 0) w.webContents.send('save-before-close');
+      else if (response === 1) { closing = true; w.close(); }
+    });
+  });
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

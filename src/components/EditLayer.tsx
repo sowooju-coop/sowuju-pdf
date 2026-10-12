@@ -226,6 +226,9 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
           onPointerDown={(e) => e.stopPropagation()}
           onInput={(e) => onText((e.currentTarget as HTMLElement).innerText)}
           onKeyDown={(e) => {
+            // 한글 입력 중(글자 조합 중)에 누른 Enter는 조합을 끝내는 키라서 적용하지 않는다.
+            // 이걸 막지 않으면 마지막 글자가 빠지거나 두 번 들어간다
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (e.key === 'Enter') { e.preventDefault(); finish(true); }
             else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
           }}
