@@ -37,12 +37,50 @@
   "build": {
     "appId": "kr.co.sowooju.pdf",
     "productName": "소우주 PDF",
-    "directories": { "output": "release" },
-    "files": ["dist/**", "electron/**", "package.json"],
-    "fileAssociations": [{ "ext": "pdf", "name": "PDF 문서", "role": "Editor" }],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "artifactName": "SowujuPDF-Setup-${version}.${ext}" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "shortcutName": "소우주 PDF" },
-    "mac": { "target": ["dmg"], "category": "public.app-category.productivity" },
-    "publish": [{ "provider": "github", "owner": "sowooju-coop", "repo": "sowuju-pdf" }]
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF 문서",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "SowujuPDF-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "소우주 PDF"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sowooju-coop",
+        "repo": "sowuju-pdf",
+        "releaseType": "prerelease"
+      }
+    ]
   }
 }

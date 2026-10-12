@@ -6,7 +6,12 @@ contextBridge.exposeInMainWorld('sowuju', {
   openFiles: () => ipcRenderer.invoke('open-files'),
   saveFile: (name, bytes) => ipcRenderer.invoke('save-file', name, bytes),
   print: (title, pages) => ipcRenderer.invoke('print', title, pages),
-  onOpenPath: (cb) => ipcRenderer.on('open-path', (_e, file) => cb(file)),
+  onOpenPath: (cb) => {
+    const fn = (_e, file) => cb(file);
+    ipcRenderer.on('open-path', fn);
+    return () => ipcRenderer.removeListener('open-path', fn);
+  },
+  takePending: () => ipcRenderer.invoke('take-pending'),
   pathForFile: (file) => webUtils.getPathForFile(file),
   recentList: () => ipcRenderer.invoke('recent-list'),
   recentAdd: (item) => ipcRenderer.invoke('recent-add', item),

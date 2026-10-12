@@ -35,13 +35,23 @@ function createWindow() {
     if (/^https:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('did-finish-load', () => {
-    if (pendingPath) sendPath(pendingPath);
-    pendingPath = null;
-  });
   if (DEV_URL) win.loadURL(DEV_URL);
   else win.loadURL('app://local/index.html');
 }
+
+// 실행할 때 받은 파일은 화면이 준비된 뒤 화면 쪽에서 가져간다 (먼저 보내면 받을 곳이 없어 사라진다)
+ipcMain.handle('take-pending', async () => {
+  const p = pendingPath;
+  pendingPath = null;
+  if (!p) return null;
+  try {
+    const bytes = await fs.readFile(p);
+    return { name: path.basename(p), bytes: new Uint8Array(bytes), path: p };
+  } catch (e) {
+    dialog.showErrorBox('파일을 열지 못했어요', String(e.message || e));
+    return null;
+  }
+});
 
 async function sendPath(p) {
   try {

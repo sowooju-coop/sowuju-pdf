@@ -23,7 +23,9 @@ interface AppBridge {
   openFiles(): Promise<OpenedFile[]>;
   saveFile(name: string, bytes: Uint8Array): Promise<string | null>;
   print(title: string, pages: PrintPage[]): Promise<{ ok: boolean; reason?: string }>;
-  onOpenPath(cb: (file: OpenedFile) => void): void;
+  onOpenPath(cb: (file: OpenedFile) => void): () => void;
+  /** 프로그램을 실행할 때 함께 받은 파일 (한 번만) */
+  takePending(): Promise<OpenedFile | null>;
   pathForFile(file: File): string;
   recentList(): Promise<RecentFile[]>;
   recentAdd(item: Omit<RecentFile, 'openedAt'>): Promise<void>;

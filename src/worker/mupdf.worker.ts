@@ -238,3 +238,6 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   }
   (self as unknown as DedicatedWorkerGlobalScope).postMessage(res, transfer);
 };
+
+// 여기까지 왔으면 MuPDF(WebAssembly)를 다 불러온 것. 그 전에 온 요청은 받지 못하므로 준비됐다고 알린다
+(self as unknown as DedicatedWorkerGlobalScope).postMessage({ id: 0, ok: true, result: 'ready' } satisfies WorkerResponse);

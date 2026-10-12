@@ -7,11 +7,21 @@ export class PdfClient {
   private worker = new Worker(new URL('../worker/mupdf.worker.ts', import.meta.url), { type: 'module' });
   private seq = 0;
   private waiting = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  /**
+   * 작업 스레드가 MuPDF를 다 불러왔다는 신호(id 0). 불러오는 동안 보낸 요청은 버려지므로
+   * 첫 요청은 이 신호를 기다렸다가 보낸다.
+   */
+  private ready: Promise<void>;
   /** 작업 순서를 지키기 위한 대기열 (그리기 도중 페이지 삭제 등이 끼어들지 않게) */
-  private chain: Promise<unknown> = Promise.resolve();
+  private chain: Promise<unknown>;
 
   constructor() {
+    let ok!: () => void, fail!: (e: Error) => void;
+    this.ready = new Promise<void>((res, rej) => { ok = res; fail = rej; });
+    this.chain = this.ready;
+    this.worker.onerror = (e) => fail(new Error(e.message || 'PDF 엔진을 불러오지 못했어요'));
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      if (e.data.id === 0) { ok(); return; }
       const w = this.waiting.get(e.data.id);
       if (!w) return;
       this.waiting.delete(e.data.id);
@@ -29,7 +39,8 @@ export class PdfClient {
       });
     const p = this.chain.then(run, run);
     this.chain = p.catch(() => undefined);
-    return p;
+    // 엔진을 못 불러왔으면 기다리지 않고 바로 알린다
+    return Promise.race([p, this.ready.then(() => p)]);
   }
 
   open(bytes: Uint8Array, password?: string) {

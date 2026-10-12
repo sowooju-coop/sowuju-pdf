@@ -470,7 +470,16 @@ export default function App() {
     };
   }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length]);
 
-  useEffect(() => { window.sowuju?.onOpenPath((f) => load(f)); }, [load]);
+  // 탐색기에서 PDF를 두 번 눌러 열거나, 이미 켜진 창에 파일을 보낼 때
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    const host = window.sowuju;
+    if (!host) return;
+    const off = host.onOpenPath((f) => loadRef.current(f));
+    host.takePending().then((f) => { if (f) loadRef.current(f); });
+    return off;
+  }, []);
 
   const curPage = doc?.pages[cur];
   const edits = log.done.filter((h) => h.kind === 'text');
