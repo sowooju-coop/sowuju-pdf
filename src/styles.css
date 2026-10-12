@@ -745,3 +745,14 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .printprev .paper{width:230px;aspect-ratio:210/297;background:#fff;border:1px solid #DDE3E9;box-shadow:0 4px 14px rgba(15,27,42,.12);display:flex;align-items:center;justify-content:center;overflow:hidden}
 .printprev .paper img{max-width:100%;max-height:100%;object-fit:contain}
 .printprev .pnav{display:flex;align-items:center;gap:8px;font-size:12.5px;font-variant-numeric:tabular-nums}
+
+/* 인증서 전자서명 */
+.certdlg{max-height:calc(100vh - 40px);overflow-y:auto}
+.certdlg .certlist{display:grid;gap:6px;max-height:220px;overflow-y:auto}
+.certdlg .pickcert{justify-self:start}
+.certdlg .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.certdlg .signpage{position:relative;justify-self:center;background:#fff center/contain no-repeat;border:1px solid #DDE3E9;border-radius:3px;cursor:pointer;touch-action:none;box-shadow:0 2px 8px rgba(15,27,42,.08);overflow:hidden}
+.certdlg .signbox{position:absolute;display:flex;flex-direction:column;justify-content:center;gap:1px;padding:0 4px;border:1.5px solid #2961D1;background:rgba(255,255,255,.92);color:#1A1F29;line-height:1.2;white-space:nowrap;overflow:hidden;cursor:move;box-shadow:0 0 0 3px rgba(41,97,209,.18)}
+.certdlg .signbox .b{font-weight:600}
+.certdlg .signhint{justify-self:center}
+@media (max-width:560px){.certdlg .grid2{grid-template-columns:1fr}}

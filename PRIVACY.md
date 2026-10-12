@@ -15,6 +15,7 @@ This program will not transfer any information to other networked systems unless
 
 - **스캔 문서 글자 읽기(OCR)**: 프로그램 안에 들어 있는 글자 인식 엔진과 한국어·영어 자료로 이 컴퓨터에서만 읽습니다. 그림이나 글자를 어디에도 보내지 않습니다.
 - **한글·워드·엑셀 파일 열기**: 이 컴퓨터에 설치된 한글(한컴오피스)·Microsoft Office·LibreOffice를 화면에 띄우지 않고 불러 PDF로 바꿉니다. 바꾸는 동안 임시 폴더에 PDF를 만들었다가 읽은 뒤 바로 지웁니다.
+- **인증서 전자서명**: 서명할 때만 이 컴퓨터와 꽂힌 USB의 공동인증서 폴더(NPKI)를 읽어 목록을 보여 줍니다. 인증서 암호와 개인키는 서명하는 동안 프로그램 안에서만 쓰고, 저장하거나 어디에도 보내지 않습니다. 시간 확인 서버(타임스탬프)에도 접속하지 않습니다.
 
 - **Update check (auto-update)**: a few seconds after start and every 6 hours, the program checks GitHub (github.com) public release information for a new version and downloads the installer if one exists. Only ordinary request information (IP address, program name and version) reaches GitHub; no documents or personal data are sent.
   - Turn off **"자동 확인" (automatic check)** at the bottom of the start screen to check only when the user clicks **"업데이트 확인" (check for updates)**.

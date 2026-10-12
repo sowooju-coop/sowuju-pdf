@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
 const { setupUpdater } = require('./updater.cjs');
+const { listNpki } = require('./npki.cjs');
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const DIST = path.join(__dirname, '..', 'dist');
@@ -65,6 +66,7 @@ ipcMain.handle('take-printed', async () => {
   for (const p of printedQueue.splice(0)) { try { out.push(await readPrinted(p)); } catch { /* 지워졌으면 넘어간다 */ } }
   return out;
 });
+ipcMain.handle('npki-list', async () => { try { return await listNpki(); } catch { return []; } });
 ipcMain.handle('printer-status', () => printerStatus());
 ipcMain.handle('printer-install', async () => { try { return await printerInstall(); } catch (e) { return { error: String(e.message || e) }; } });
 ipcMain.handle('printer-remove', async () => { try { return await printerRemove(); } catch (e) { return { error: String(e.message || e) }; } });

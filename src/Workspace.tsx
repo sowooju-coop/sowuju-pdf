@@ -28,6 +28,9 @@ import { OutlinePanel } from './components/Outline';
 import { SplitDialog } from './components/SplitDialog';
 import { groupLabel, parseRanges } from './lib/ranges';
 import { FindBar, FindLayer, type FindState } from './components/Find';
+import { CertSignDialog } from './components/CertSign';
+import type { SignCert } from './lib/sign/certs';
+import type { SignPrepare, SignState } from './lib/protocol';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
 import type { ShapeKind } from './lib/protocol';
@@ -209,6 +212,7 @@ export function Workspace(props: WorkspaceProps) {
   const [scanHint, setScanHint] = useState(false);
   const [markOpen, setMarkOpen] = useState<'num' | 'wm' | null>(null);
   const [encrypted, setEncrypted] = useState(false);
+  const [certSign, setCertSign] = useState<SignState | null | false>(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [activeShape, setActiveShape] = useState<string | null>(null);
   const [drawKind, setDrawKind] = useState<ShapeKind | null>(null);
@@ -280,7 +284,11 @@ export function Workspace(props: WorkspaceProps) {
       setFieldCount(0);
       if (file.printed) say('다른 프로그램에서 "소우주 PDF"로 인쇄한 문서예요. 저장하면 원하는 곳에 PDF로 저장돼요.');
       if (file.convertedFrom) say(`"${file.convertedFrom}"을 PDF로 바꿔 열었어요. 저장하면 PDF 파일로 따로 저장돼요.`);
-      client.fieldCount().then((n) => { setFieldCount(n); if (n) say(`이 문서에는 입력칸이 ${n}개 있어요. 칸을 눌러 바로 쓰세요.`); }).catch(() => undefined);
+      Promise.all([client.fieldCount(), client.signState().catch(() => null)]).then(([n, sg]) => {
+        setFieldCount(n);
+        if (sg?.signatures) say(`이 문서에는 전자서명이 ${sg.signatures}개 있어요. 고쳐서 저장하면 서명이 깨지니, 서명을 더할 때는 고치지 말고 [보호 → 인증서 서명]만 하세요.`);
+        else if (n) say(`이 문서에는 입력칸이 ${n}개 있어요. 칸을 눌러 바로 쓰세요.`);
+      }).catch(() => undefined);
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
       return true;
     } catch (e) {
@@ -429,6 +437,26 @@ export function Workspace(props: WorkspaceProps) {
       const where = await saveFile(`${baseName(doc.name)}_${password ? '암호' : '암호해제'}.pdf`, bytes);
       if (where) say(password ? '암호를 건 파일로 저장했어요. 암호를 잊지 않게 적어 두세요.' : '암호를 푼 파일로 저장했어요.');
     } catch (e) { say(`저장하지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, doc, say]);
+
+  /** 인증서 전자서명: 서명 칸을 넣은 파일을 만들고, 서명 값을 채워 따로 저장 */
+  const openCertSign = useCallback(async () => {
+    if (!doc) return;
+    await applyPlacedRef.current();
+    try { setCertSign(await client.signState()); } catch { setCertSign(null); }
+  }, [client, doc]);
+  const signWithCert = useCallback(async (sc: SignCert, o: SignPrepare, selfMade: boolean) => {
+    if (!doc) return false;
+    setBusy('전자서명을 넣는 중…');
+    try {
+      const { fillSignature } = await import('./lib/sign/pdfSign');
+      const bytes = fillSignature(await client.prepareSign(o), sc);
+      const where = await saveFile(`${baseName(doc.name)}_서명.pdf`, bytes);
+      if (!where) return false;
+      say(selfMade ? '전자서명을 넣어 저장했어요. 서명한 파일은 더 고치지 말고 그대로 보내세요. 만든 인증서 파일(.pfx)과 암호는 잘 보관해 두세요.' : '전자서명을 넣어 저장했어요. 서명한 파일은 더 고치지 말고 그대로 보내세요.');
+      return true;
+    } catch (e) { throw new Error(`서명하지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
   }, [client, doc, say]);
 
@@ -1250,6 +1278,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('shield', '개인정보 지우기', () => (privacy ? setPrivacy(null) : startPrivacy()), { on: !!privacy, title: '주민번호·전화번호 등을 찾아 완전히 지우기' })}
             {tool('lock', encrypted ? '암호 걸기·풀기' : '암호 걸기', () => setLockOpen(true), { title: '열 때 암호를 묻는 파일로 저장' })}
             {tool('save', '용량 줄이기', () => setShrinkOpen(true), { title: '사진·스캔을 줄여 메일로 보내기 좋게' })}
+            {tool('sign', '인증서 서명', () => void openCertSign(), { title: '공동인증서·인증서 파일로 전자서명해 저장' })}
           </div>
         )}
         {(tbMore.l || tbMore.r) && (
@@ -1653,6 +1682,7 @@ export function Workspace(props: WorkspaceProps) {
           finally { setBusy(null); }
         }} />
       )}
+      {certSign !== false && doc && <CertSignDialog client={client} pages={doc.pages} current={cur} state={certSign} onClose={() => setCertSign(false)} onSign={signWithCert} />}
       {lockOpen && <LockDialog encrypted={encrypted} onClose={() => setLockOpen(false)} onSave={saveLocked} />}
       {shrinkOpen && (
         <ShrinkDialog

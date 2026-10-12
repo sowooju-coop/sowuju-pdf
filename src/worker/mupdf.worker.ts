@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { Bookmark, CleanOptions, CropOptions, ReplaceParaRequest, ResizeOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { SignPrepare, Bookmark, CleanOptions, CropOptions, ReplaceParaRequest, ResizeOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replacePara, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
@@ -14,6 +14,7 @@ import { createFields } from './formCreate';
 import { detectFields } from './formDetect';
 import { cleanPages, cleanPreview } from './scanClean';
 import { cropPages, resizePages } from './pageSize';
+import { hasSignatures, prepareSign } from './sign';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
@@ -339,6 +340,18 @@ const handlers: Record<string, (args: any) => any> = {
   },
   resizePages: async (o: ResizeOptions) => { await edit('쪽 크기', () => resizePages(requireDoc(), o)); return { ...history(), pages: pageInfos() }; },
   cropPages: async (o: CropOptions) => { await edit('여백 자르기', () => cropPages(requireDoc(), o)); return { ...history(), pages: pageInfos() }; },
+  signState: () => {
+    const d = requireDoc();
+    return { encrypted: !d.getTrailer().get('Encrypt').isNull(), signatures: hasSignatures(d), edited: d.canUndo() };
+  },
+  /** 서명 칸과 빈 서명 자리를 넣은 파일. 고치지 않은 문서는 원래 파일 뒤에 덧붙여 이미 있던 서명을 지킨다 */
+  prepareSign: async (o: SignPrepare) => {
+    const d = requireDoc();
+    if (!d.getTrailer().get('Encrypt').isNull()) throw new Error('암호가 걸린 문서예요. 암호를 푼 파일로 저장한 뒤 서명해 주세요.');
+    const keep = !d.canUndo() && hasSignatures(d) > 0;
+    const base = keep ? d.saveToBuffer('incremental').asUint8Array().slice() : saveBytes('garbage,compress');
+    return prepareSign(base, o);
+  },
   textless: () => textlessPages(requireDoc()),
   renderOcr: ({ index, scale }: { index: number; scale: number }) => renderForOcr(requireDoc(), index, scale),
   outline: () => getOutline(requireDoc()),

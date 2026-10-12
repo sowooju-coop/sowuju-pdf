@@ -13,5 +13,9 @@
 | [electron-updater](https://www.electron.build/auto-update) | 자동 업데이트 | MIT |
 | [tesseract.js](https://github.com/naptha/tesseract.js), [tesseract.js-core](https://github.com/naptha/tesseract.js-core) (Tesseract OCR 포함) | 스캔 문서 글자 읽기 (프로그램 안에서만 동작) | Apache-2.0 |
 | [tessdata](https://github.com/tesseract-ocr/tessdata_best) 한국어·영어 학습 자료 (`@tesseract.js-data/kor`, `eng` 4.0.0_best_int) | 스캔 문서 글자 읽기 | Apache-2.0 (꾸러미는 MIT) |
+| [node-forge](https://github.com/digitalbazaar/forge) (Digital Bazaar) | 인증서 읽기, 전자서명(CMS) 만들기, 서명용 인증서 만들기 | BSD-3-Clause (BSD-3-Clause 또는 GPL-2.0 중 BSD-3-Clause를 골라 씀) |
+| [kisa-seed](https://www.npmjs.com/package/kisa-seed) (KISA SEED 128 자바스크립트 구현) | 공동인증서 개인키(SEED 암호) 풀기 | MIT |
+
+BSD-3-Clause·MIT 부품도 AGPLv3과 함께 쓸 수 있습니다.
 
 Apache-2.0 부품은 GPLv3·AGPLv3과 함께 쓸 수 있습니다. 라이선스 전문: https://www.apache.org/licenses/LICENSE-2.0

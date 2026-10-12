@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('sowuju', {
   takePending: () => ipcRenderer.invoke('take-pending'),
   /** "소우주 PDF" 프린터로 꺼져 있는 동안 인쇄한 문서들 */
   takePrinted: () => ipcRenderer.invoke('take-printed'),
+  /** 이 컴퓨터·USB의 공동인증서 (서명할 때만) */
+  npkiList: () => ipcRenderer.invoke('npki-list'),
   printerStatus: () => ipcRenderer.invoke('printer-status'),
   printerInstall: () => ipcRenderer.invoke('printer-install'),
   printerRemove: () => ipcRenderer.invoke('printer-remove'),

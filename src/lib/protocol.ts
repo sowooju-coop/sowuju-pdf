@@ -165,3 +165,18 @@ export interface ReplaceParaRequest {
 export interface ResizeOptions { width: number; height: number; orient: 'keep' | 'portrait' | 'landscape'; pages: number[] }
 /** 여백 자르기: rect는 화면 좌표(pt, 위가 0). auto면 쪽마다 내용에 맞추고 margin(pt)만큼 남긴다 */
 export interface CropOptions { pages: number[]; rect?: [number, number, number, number]; auto?: boolean; margin: number; reset?: boolean }
+
+/** 인증서 전자서명 칸 만들기 */
+export interface SignPrepare {
+  page: number;
+  /** 보이는 서명 상자 (화면 좌표, 위가 0). 없으면 보이지 않는 서명 */
+  rect?: [number, number, number, number];
+  /** 상자 안에 쓸 줄들 */
+  lines: string[];
+  name?: string;
+  reason?: string;
+  location?: string;
+}
+export interface SignState { encrypted: boolean; signatures: number; edited: boolean }
+/** 서명 값이 들어갈 자리 (바이트). 인증서 사슬이 길어도 넉넉하게 */
+export const SIG_SPACE = 16384;

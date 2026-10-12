@@ -23,6 +23,9 @@ export interface OpenedFile {
   printed?: boolean;
 }
 
+/** 공동인증서 한 개: 폴더와 signCert.der, signPri.key (잠긴 그대로) */
+export interface NpkiEntry { path: string; cert: Uint8Array; key: Uint8Array }
+
 export interface PrinterStatus { supported: boolean; installed: boolean; driver?: boolean; portOk?: boolean; error?: string }
 
 export interface RecentFile {
@@ -36,6 +39,7 @@ interface AppBridge {
   openFile(): Promise<OpenedFile | { error: string } | null>;
   convertPath(path: string): Promise<OpenedFile | { error: string }>;
   takePrinted(): Promise<OpenedFile[]>;
+  npkiList(): Promise<NpkiEntry[]>;
   printerStatus(): Promise<PrinterStatus>;
   printerInstall(): Promise<PrinterStatus | { error: string }>;
   printerRemove(): Promise<PrinterStatus | { error: string }>;
@@ -157,6 +161,9 @@ export async function saveFiles(title: string, files: { name: string; bytes: Uin
   }
   return { dir: '내려받기 폴더', count: files.length };
 }
+
+/** 공동인증서 찾기. 브라우저에서는 폴더를 볼 수 없어 파일을 직접 고른다 */
+export const npkiList = (): Promise<NpkiEntry[]> => window.sowuju?.npkiList?.() ?? Promise.resolve([]);
 
 /** "소우주 PDF" 프린터 (Windows 설치형만) */
 export const printerApi = {
