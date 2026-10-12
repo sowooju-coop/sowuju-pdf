@@ -138,3 +138,6 @@ export interface WatermarkOptions {
 
 /** 글자 읽기(OCR)로 찾은 낱말. 그림 픽셀 단위 */
 export interface OcrWord { text: string; x0: number; y0: number; x1: number; y1: number; base: number; lineH: number; /** 줄 끝 낱말이면 true (뒤에 띄어쓰기를 넣지 않음) */ last: boolean }
+
+/** 책갈피(목차) 한 항목. y는 쪽 안의 높이(화면 좌표, 위가 0) */
+export interface Bookmark { title: string; page: number; y?: number; open: boolean; children: Bookmark[] }

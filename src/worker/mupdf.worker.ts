@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { FormField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { Bookmark, FormField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
@@ -9,6 +9,7 @@ import { listFields, setField } from './forms';
 import { clearFindCache, findText } from './find';
 import { addPageNumbers, addWatermark } from './pageStamp';
 import { addOcrText, textlessPages } from './ocrText';
+import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
@@ -321,6 +322,13 @@ const handlers: Record<string, (args: any) => any> = {
     return { ...history() };
   },
   textless: () => textlessPages(requireDoc()),
+  outline: () => getOutline(requireDoc()),
+  setOutline: async ({ list }: { list: Bookmark[] }) => {
+    await edit('목차', () => setOutline(requireDoc(), list));
+    return { ...history() };
+  },
+  autoOutline: () => autoOutline(requireDoc()),
+  pageTitle: ({ index }: { index: number }) => pageTitle(requireDoc(), index),
   /** 여러 쪽의 글자 읽기 결과를 한 번의 작업(되돌리기 한 번)으로 넣는다 */
   ocrText: async ({ pages }: { pages: { index: number; scale: number; words: OcrWord[] }[] }) => {
     await edit('글자 읽기', async () => { for (const p of pages) await addOcrText(requireDoc(), p.index, p.scale, p.words); });

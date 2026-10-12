@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { FormField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { Bookmark, FormField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -101,6 +101,11 @@ export class PdfClient {
   place(items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[], texts: NewText[] = [], shapes: NewShape[] = []) {
     return this.call<EditResult>('place', { items, texts, shapes }, items.map((i) => i.png.buffer));
   }
+  // 책갈피(목차)
+  outline() { return this.call<Bookmark[]>('outline'); }
+  setOutline(list: Bookmark[]) { return this.call<EditResult>('setOutline', { list }); }
+  autoOutline() { return this.call<Bookmark[]>('autoOutline'); }
+  pageTitle(index: number) { return this.call<{ title: string; y: number } | null>('pageTitle', { index }); }
   /** 글자가 하나도 없는 쪽 (스캔한 쪽) */
   textless() { return this.call<number[]>('textless'); }
   ocrText(pages: { index: number; scale: number; words: OcrWord[] }[]) { return this.call<EditResult>('ocrText', { pages }); }

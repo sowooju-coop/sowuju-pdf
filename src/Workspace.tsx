@@ -17,6 +17,7 @@ import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
 import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
 import { OcrDialog, type OcrProgress } from './components/Ocr';
 import { recognize, stopOcr } from './lib/ocr';
+import { OutlinePanel } from './components/Outline';
 import { SplitDialog } from './components/SplitDialog';
 import { groupLabel, parseRanges } from './lib/ranges';
 import { FindBar, FindLayer, type FindState } from './components/Find';
@@ -156,6 +157,9 @@ export function Workspace(props: WorkspaceProps) {
   const [shrinkOpen, setShrinkOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
+  // 왼쪽: 쪽 목록 / 목차
+  const [side, setSide] = useState<'pages' | 'outline'>('pages');
+  const [outlineCount, setOutlineCount] = useState(0);
   // 글자 읽기(OCR)
   const [ocrOpen, setOcrOpen] = useState(false);
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
@@ -825,6 +829,21 @@ export function Workspace(props: WorkspaceProps) {
   }, [active, textSel, say]);
   const selecting = mode !== 'edit' && !privacy && !drawKind && !placing && !addingText && !placed.length && !texts.length && !shapes.length;
 
+  /** 쪽 안의 높이(y)까지 맞춰 이동 (목차) */
+  const goToY = useCallback((i: number, y?: number) => {
+    const v = viewer.current, el = v?.querySelectorAll<HTMLElement>('.page')[i];
+    if (!v || !el) return;
+    v.scrollTop = el.offsetTop + (y ?? 0) * zoom - 24;
+    setCur(i);
+  }, [zoom]);
+  // 목차 개수 (왼쪽 '목차' 옆 숫자)
+  useEffect(() => {
+    if (!doc) return;
+    let off = false;
+    client.outline().then((l) => { if (!off) { const c = (x: typeof l): number => x.reduce((n, b) => n + 1 + c(b.children), 0); setOutlineCount(c(l)); } }).catch(() => {});
+    return () => { off = true; };
+  }, [client, doc, hist]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const fitWidthRef = useRef(() => {});
@@ -1073,7 +1092,22 @@ export function Workspace(props: WorkspaceProps) {
       </div>
 
       <div className="work">
-        <PageRail client={client} pages={doc.pages} rev={rev} pageRev={pageRev} cur={cur} sel={sel} onThumb={onThumb} onReorder={reorder} onInsertFiles={insertFiles} {...pageActions} />
+        <div className={`side${side === 'outline' ? ' wide' : ''}`}>
+          <div className="sidetabs" role="tablist" aria-label="왼쪽 보기">
+            <button role="tab" aria-selected={side === 'pages'} className={side === 'pages' ? 'on' : ''} onClick={() => setSide('pages')}>쪽</button>
+            <button role="tab" aria-selected={side === 'outline'} className={side === 'outline' ? 'on' : ''} onClick={() => setSide('outline')}>목차{outlineCount > 0 && <small>{outlineCount}</small>}</button>
+          </div>
+          {side === 'pages' ? (
+            <PageRail client={client} pages={doc.pages} rev={rev} pageRev={pageRev} cur={cur} sel={sel} onThumb={onThumb} onReorder={reorder} onInsertFiles={insertFiles} {...pageActions} />
+          ) : (
+            <OutlinePanel
+              client={client} version={`${client.docId}:${rev}:${hist.canUndo}:${hist.canRedo}:${JSON.stringify(pageRev).length}`} cur={cur}
+              onGo={goToY}
+              onApply={async (list) => { try { applyPages(await client.setOutline(list), { kind: 'page', page: cur }, []); } catch (e) { say(`목차를 고치지 못했어요. ${(e as Error).message}`); } }}
+              onMessage={say}
+            />
+          )}
+        </div>
 
         <main className="stage">
           {overview && (

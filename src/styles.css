@@ -614,3 +614,31 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .scanhint button{height:30px;padding:0 12px;border:0;border-radius:15px;background:rgba(255,255,255,.14);color:#fff;font:inherit;font-size:13px;cursor:pointer}
 .scanhint button.ok{background:#fff;color:#0F1B2A;font-weight:700}
 .busy div small{display:block;margin-top:6px;font-weight:400;font-size:12.5px;color:var(--muted);max-width:360px;line-height:1.5}
+
+/* 왼쪽: 쪽 / 목차 */
+.side{flex:none;width:156px;min-height:0;display:flex;flex-direction:column;transition:width .15s}
+.side.wide{width:264px}
+.side>.rail{flex:1;min-height:0;width:auto;padding-top:12px}
+.sidetabs{flex:none;display:flex;gap:2px;margin:10px 10px 0;padding:2px;border-radius:8px;background:var(--soft)}
+.sidetabs button{flex:1;height:28px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12.5px;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px}
+.sidetabs button.on{background:#fff;box-shadow:0 1px 2px rgba(15,27,42,.12);color:var(--ink);font-weight:700}
+.sidetabs small{font-size:11px;padding:0 5px;border-radius:8px;background:#E6EEF0;color:var(--teal,#0F766E);font-weight:700}
+.outline{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 8px 0}
+.olacts{display:flex;gap:6px;margin-bottom:8px}
+.olacts .btn.sm{height:30px;font-size:12px;padding:0 8px;gap:4px}
+.oltree,.oltree ul{list-style:none;margin:0;padding:0}
+.oltree{flex:1;overflow-y:auto;padding-bottom:12px}
+.olrow{display:flex;align-items:center;gap:2px;border-radius:6px}
+.olrow.sel{background:#E6F2F0}
+.oltog{flex:none;width:18px;height:18px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0;color:var(--muted);cursor:pointer}
+.oltitle{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;padding:6px 6px 6px 2px;border:0;background:transparent;font:inherit;font-size:13px;color:var(--ink);text-align:left;cursor:pointer}
+.oltitle span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oltitle small{flex:none;font-size:11px;color:var(--faint)}
+.oltitle:hover span{text-decoration:underline}
+.olinput{flex:1;min-width:0;height:28px;border:1px solid var(--teal,#0F766E);border-radius:5px;padding:0 6px;font:inherit;font-size:13px}
+.olempty{font-size:12.5px;line-height:1.6;color:var(--muted);padding:8px 4px}
+.olbar{flex:none;display:flex;justify-content:space-between;gap:2px;padding:6px 2px;border-top:1px solid var(--line,#DDE3E9);background:var(--ground,#F4F6F8)}
+.olbar button{flex:1;height:30px;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--ink2);cursor:pointer}
+.olbar button:hover:not(:disabled){background:#fff}
+.olbar button:disabled{opacity:.35;cursor:default}
+.olbar button.danger{color:#C8102E}
