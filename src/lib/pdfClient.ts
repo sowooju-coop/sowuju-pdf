@@ -126,7 +126,13 @@ export class PdfClient {
   /** 비교용 낱말과 위치 */
   words() { return this.call<{ page: number; t: string; r: [number, number, number, number] }[]>('words'); }
   /** 작업 스레드를 끝낸다 (잠깐 쓰고 버리는 문서용) */
-  close() { this.worker.terminate(); }
+  close() {
+    this.worker.terminate();
+    const err = new Error('문서를 닫았어요.');
+    for (const t of this.queue.splice(0)) t.reject(err);
+    for (const w of this.waiting.values()) w.reject(err);
+    this.waiting.clear();
+  }
 
   /** 문서 안 글자 찾기 (띄어쓰기·대소문자 무시) */
   find(query: string) { return this.call<{ page: number; rect: [number, number, number, number]; text: string }[]>('find', { query }); }

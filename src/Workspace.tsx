@@ -121,6 +121,13 @@ export function TabStrip({ tabs, activeId, onSelect, onClose, onNew }: { tabs: T
 export function Workspace(props: WorkspaceProps) {
   const { tabId, active, easy, easyScale, setEasy, setEasyScale } = props;
   const client = useMemo(() => new PdfClient(), []);
+  // 탭을 닫으면 이 탭의 PDF 작업 스레드를 끝내 메모리를 돌려준다.
+  // (개발 중 StrictMode는 곧바로 다시 붙이므로 잠깐 기다렸다가 정말 떨어졌을 때만 끝낸다)
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; setTimeout(() => { if (!mounted.current) client.close(); }, 500); };
+  }, [client]);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [rev, setRev] = useState(0);
   // 쪽 하나만 바뀐 편집(글자 고치기, 넣기, 돌리기)은 그 쪽만 다시 그린다
