@@ -11,6 +11,7 @@ const PATHS: Record<string, string> = {
   water: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z',
   split: 'M6 3v6l6 3 6-3V3M12 12v9M8 17l4 4 4-4',
   ocr: 'M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 9h8M12 9v7',
+  compare: 'M4 5h7v14H4zM13 5h7v14h-7M7 9h1M7 12h1M16 9h1M16 12h1',
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   down: 'M12 5v14M6 13l6 6 6-6',
   edit: 'M4 7V5h10v2M9 5v11M7 16h4M13 20l6.5-6.5 2 2L15 22h-2z',

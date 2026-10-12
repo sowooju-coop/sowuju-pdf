@@ -121,6 +121,11 @@ export class PdfClient {
   docId = 0;
   origFont(index: number, name: string) { return this.call<OrigFontInfo | null>('origFont', { index, name }); }
 
+  /** 비교용 낱말과 위치 */
+  words() { return this.call<{ page: number; t: string; r: [number, number, number, number] }[]>('words'); }
+  /** 작업 스레드를 끝낸다 (잠깐 쓰고 버리는 문서용) */
+  close() { this.worker.terminate(); }
+
   /** 문서 안 글자 찾기 (띄어쓰기·대소문자 무시) */
   find(query: string) { return this.call<{ page: number; rect: [number, number, number, number]; text: string }[]>('find', { query }); }
 

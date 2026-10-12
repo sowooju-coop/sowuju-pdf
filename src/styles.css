@@ -642,3 +642,32 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .olbar button:hover:not(:disabled){background:#fff}
 .olbar button:disabled{opacity:.35;cursor:default}
 .olbar button.danger{color:#C8102E}
+
+/* 두 PDF 비교 */
+.cmpview{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--ground,#EEF1F4)}
+.cmpbar{flex:none;display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line,#DDE3E9)}
+.cmpbar b{font-size:15px}
+.cmplegend{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.cmplegend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-left:8px}
+.cmplegend i.del,.cmpmark.del{background:rgba(220,38,38,.28)}
+.cmplegend i.ins,.cmpmark.ins{background:rgba(22,163,74,.28)}
+.cmpcount{margin-left:auto;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.cmpbody{flex:1;min-height:0;display:flex}
+.cmpcolwrap{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line,#DDE3E9)}
+.cmphead{flex:none;padding:8px 14px;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmphead.del{color:#B91C1C;background:#FDF0F0}
+.cmphead.ins{color:#15803D;background:#EFF8F1}
+.cmpcol{flex:1;overflow:auto;padding:16px 20px 40px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.cmppage{position:relative;flex:none;background:#fff;box-shadow:0 1px 3px rgba(15,27,42,.12)}
+.cmpmark{position:absolute;border-radius:2px;pointer-events:none;mix-blend-mode:multiply}
+.cmpmark.cur{outline:2px solid #F59E0B;outline-offset:1px}
+.cmppn{position:absolute;right:-28px;bottom:0;font-size:11px;color:var(--faint)}
+.cmplist{flex:none;width:260px;overflow-y:auto;background:#fff;padding:8px}
+.cmpitem{display:grid;gap:3px;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12.5px;cursor:pointer}
+.cmpitem:hover{background:var(--soft)}
+.cmpitem.on{background:#FEF5E1}
+.cmpitem small{font-size:11px;color:var(--muted)}
+.cmpitem .d{color:#B91C1C;text-decoration:line-through}
+.cmpitem .i{color:#15803D}
+.cmpwait{font-size:13px;color:var(--muted);padding:12px;line-height:1.6}
+.cmperr{margin:40px auto;max-width:480px;padding:20px;border-radius:12px;background:#fff;font-size:14px;line-height:1.6}

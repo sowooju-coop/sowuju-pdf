@@ -44,3 +44,30 @@ export function findText(doc: mupdf.PDFDocument, query: string, limit = 3000): F
   }
   return out;
 }
+
+/** 비교용: 쪽마다 낱말(띄어쓰기로 나눈 것)과 위치 */
+export function pageWords(doc: mupdf.PDFDocument): { page: number; t: string; r: [number, number, number, number] }[] {
+  const out: { page: number; t: string; r: [number, number, number, number] }[] = [];
+  const n = doc.countPages();
+  for (let p = 0; p < n; p++) {
+    // 파일 안 순서가 아니라 화면 순서(위→아래, 같은 줄은 왼쪽→오른쪽)로: 고친 글자가 파일 끝에 붙어 있어도 제자리에서 비교
+    const lines = [...linesOf(doc, p)].sort((a, b) => {
+      const ha = a.bbox[3] - a.bbox[1], hb = b.bbox[3] - b.bbox[1];
+      const sameRow = Math.abs((a.bbox[1] + a.bbox[3]) / 2 - (b.bbox[1] + b.bbox[3]) / 2) < Math.min(ha, hb) * 0.5;
+      return sameRow ? a.bbox[0] - b.bbox[0] : a.bbox[1] - b.bbox[1];
+    });
+    for (const line of lines) {
+      let t = '', x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      const flush = () => { if (t) out.push({ page: p, t, r: [x0, y0, x1, y1] }); t = ''; x0 = y0 = Infinity; x1 = y1 = -Infinity; };
+      for (const c of line.chars) {
+        if (!c.c.trim()) { flush(); continue; }
+        t += c.c;
+        const q = c.quad;
+        x0 = Math.min(x0, q[0], q[2], q[4], q[6]); x1 = Math.max(x1, q[0], q[2], q[4], q[6]);
+        y0 = Math.min(y0, q[1], q[3], q[5], q[7]); y1 = Math.max(y1, q[1], q[3], q[5], q[7]);
+      }
+      flush();
+    }
+  }
+  return out;
+}

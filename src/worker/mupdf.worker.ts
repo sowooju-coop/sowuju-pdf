@@ -6,7 +6,7 @@ import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
 import { listFields, setField } from './forms';
-import { clearFindCache, findText } from './find';
+import { clearFindCache, findText, pageWords } from './find';
 import { addPageNumbers, addWatermark } from './pageStamp';
 import { addOcrText, textlessPages } from './ocrText';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
@@ -357,6 +357,7 @@ const handlers: Record<string, (args: any) => any> = {
   },
   fields: ({ index }: { index: number }): FormField[] => listFields(requireDoc(), index),
   find: ({ query }: { query: string }) => findText(requireDoc(), query),
+  words: () => pageWords(requireDoc()),
   setField: async ({ index, id, value }: { index: number; id: number; value: string }) => {
     const usedFont = await edit('입력칸 채우기', () => setField(requireDoc(), index, id, value));
     if (usedFont) fontsAdded = true;

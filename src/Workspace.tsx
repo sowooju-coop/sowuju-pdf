@@ -17,6 +17,7 @@ import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
 import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
 import { OcrDialog, type OcrProgress } from './components/Ocr';
 import { recognize, stopOcr } from './lib/ocr';
+import { CompareView } from './components/Compare';
 import { OutlinePanel } from './components/Outline';
 import { SplitDialog } from './components/SplitDialog';
 import { groupLabel, parseRanges } from './lib/ranges';
@@ -157,6 +158,7 @@ export function Workspace(props: WorkspaceProps) {
   const [shrinkOpen, setShrinkOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
+  const [compareWith, setCompareWith] = useState<OpenedFile | null>(null);
   // 왼쪽: 쪽 목록 / 목차
   const [side, setSide] = useState<'pages' | 'outline'>('pages');
   const [outlineCount, setOutlineCount] = useState(0);
@@ -623,6 +625,12 @@ export function Workspace(props: WorkspaceProps) {
     client.textless().then((t) => { if (off) return; setTextless(t); if (t.length && t.length >= doc.pages.length / 2) setScanHint(true); }).catch(() => {});
     return () => { off = true; };
   }, [docKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** 비교할 이전 판 PDF 고르기 */
+  const startCompare = async () => {
+    await applyPlacedRef.current();
+    try { const f = await openFile(); if (f) setCompareWith(f); }
+    catch (e) { say((e as Error).message); }
+  };
   const openOcr = () => {
     setScanHint(false);
     setTextless(null);
@@ -871,6 +879,7 @@ export function Workspace(props: WorkspaceProps) {
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('.cmpview')) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       if (mod && k === 'o') { e.preventDefault(); doOpen(); }
@@ -1013,6 +1022,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('print', '인쇄', () => setPrintOpen(true))}
             {tool('image', '그림으로', () => setImgOpen(true), { title: '쪽을 JPG·PNG 그림 파일로 저장' })}
             {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
+            {tool('compare', '비교', () => startCompare(), { title: '다른 PDF(이전 판)와 글자가 어디가 다른지 비교' })}
             <span className="vsep" aria-hidden="true" />
             {tool('fit', '폭에 맞추기', () => fitWidth(doc.pages))}
           </div>
@@ -1414,6 +1424,7 @@ export function Workspace(props: WorkspaceProps) {
           </div>
         </div>
       )}
+      {compareWith && <CompareView client={client} pages={doc.pages} name={doc.name} other={compareWith} onClose={() => setCompareWith(null)} />}
       {ocrOpen && (
         <OcrDialog
           total={doc.pages.length} current={cur} textless={textless} progress={ocrProgress}
