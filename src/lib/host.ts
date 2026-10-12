@@ -46,6 +46,8 @@ interface AppBridge {
   updateState(): Promise<UpdateState>;
   checkUpdate(): Promise<UpdateState>;
   installUpdate(): void;
+  getAutoUpdate(): Promise<boolean>;
+  setAutoUpdate(on: boolean): Promise<boolean>;
   onUpdate(cb: (s: UpdateState) => void): () => void;
 }
 

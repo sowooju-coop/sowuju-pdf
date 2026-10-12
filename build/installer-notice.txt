@@ -1,0 +1,17 @@
+﻿소우주 PDF 설치 안내
+
+1. 라이선스
+소우주 PDF는 소우주사회적협동조합이 만든 공개 소프트웨어로, GNU Affero General Public License 3.0 이상(AGPL-3.0-or-later)에 따라 누구나 자유롭게 쓰고, 고치고, 다시 배포할 수 있습니다. 함께 쓰인 부품과 글꼴의 라이선스는 설치 폴더와 https://github.com/sowooju-coop/sowuju-pdf 의 NOTICE.md 에 있습니다.
+
+2. 개인정보
+소우주 PDF는 사용자가 연 문서와 그 내용을 이 컴퓨터 밖으로 보내지 않습니다. 회원가입, 광고, 사용 기록 수집이 없습니다.
+단, 새 버전이 있는지 GitHub(github.com)에 확인하고, 있으면 설치 파일을 내려받습니다. 이때 일반적인 인터넷 요청 정보(IP 주소, 프로그램 이름·버전)만 전달됩니다. 시작 화면 아래 '자동 확인'을 끄면 '업데이트 확인'을 누를 때만 확인합니다.
+자세한 내용: https://github.com/sowooju-coop/sowuju-pdf/blob/main/PRIVACY.md
+
+3. 설치와 제거
+설치하면 시작 메뉴와 바탕화면에 '소우주 PDF'가 생기고, PDF 파일을 이 프로그램으로 열 수 있게 등록됩니다. 윈도우 설정의 '앱'에서 언제든 제거할 수 있습니다.
+
+---
+
+Sowuju PDF is free software licensed under the GNU AGPL 3.0 or later.
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it, except checking GitHub for new versions, which can be turned off ("자동 확인") on the start screen.

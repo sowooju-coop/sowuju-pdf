@@ -38,7 +38,8 @@ export function VersionInfo() {
   const st = useUpdate();
   const [ver, setVer] = useState('');
   const [asked, setAsked] = useState(false);
-  useEffect(() => { window.sowuju?.appVersion?.().then(setVer); }, []);
+  const [auto, setAuto] = useState(true);
+  useEffect(() => { window.sowuju?.appVersion?.().then(setVer); window.sowuju?.getAutoUpdate?.().then(setAuto); }, []);
   if (!window.sowuju?.appVersion) return null;
   const msg = !asked || !st ? '' :
     st.status === 'checking' ? '확인하는 중…' :
@@ -51,6 +52,9 @@ export function VersionInfo() {
     <span className="verinfo">
       버전 {ver}
       <button className="linkbtn" onClick={() => { setAsked(true); window.sowuju?.checkUpdate(); }}>업데이트 확인</button>
+      <label className="autoupd" title="끄면 '업데이트 확인'을 누를 때만 새 버전을 확인해요">
+        <input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); window.sowuju?.setAutoUpdate(e.target.checked); }} />자동 확인
+      </label>
       {msg && <span className="muted">{msg}</span>}
     </span>
   );

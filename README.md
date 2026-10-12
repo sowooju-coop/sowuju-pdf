@@ -30,6 +30,20 @@
 
 > 아직 코드 서명 인증서가 없어 처음 실행할 때 Windows에서 "알 수 없는 게시자" 경고가 나올 수 있습니다. "추가 정보 → 실행"을 누르면 설치됩니다.
 
+한 번 설치하면 새 버전은 프로그램이 알아서 받습니다(시작 화면 아래 '자동 확인'으로 끌 수 있어요).
+
+## Code signing policy (코드 서명 정책)
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
+
+- 서명 대상, 승인 절차, 역할: [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)
+- 작성자·검토자 (Committers and reviewers): [sowooju-coop 구성원](https://github.com/orgs/sowooju-coop/people)
+- 승인자 (Approvers): [sowooju-coop 소유자](https://github.com/orgs/sowooju-coop/people?query=role%3Aowner)
+
+## 개인정보 (Privacy policy)
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. 단, 새 버전 확인을 위해 GitHub에 접속하며 끌 수 있습니다. 자세히: [PRIVACY.md](PRIVACY.md)
+
 ## 개발
 
 Node.js 20 이상이 필요합니다.

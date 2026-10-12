@@ -1,6 +1,17 @@
 // 자동 업데이트: 깃허브 Releases에 새 버전이 올라오면 뒤에서 받아 두고,
 // 다 받으면 화면에 알린다. 지금 다시 시작하거나, 다음에 프로그램을 끌 때 설치된다.
 const { app, ipcMain } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
+
+// 설정: 새 버전 자동 확인 (끄면 사용자가 '업데이트 확인'을 누를 때만 깃허브에 묻는다)
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+function readSettings() {
+  try { return { autoUpdate: true, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { return { autoUpdate: true }; }
+}
+function writeSettings(s) {
+  try { fs.writeFileSync(settingsFile(), JSON.stringify(s)); } catch { /* 저장 못 해도 동작은 계속 */ }
+}
 
 let state = { status: 'idle', version: null, percent: 0, error: null };
 let getWin = () => null;
@@ -20,6 +31,8 @@ function setupUpdater(winGetter) {
   ipcMain.handle('app-version', () => app.getVersion());
   ipcMain.handle('update-state', () => state);
   ipcMain.handle('update-check', () => check(true));
+  ipcMain.handle('update-auto-get', () => readSettings().autoUpdate);
+  ipcMain.handle('update-auto-set', (_e, on) => { writeSettings({ ...readSettings(), autoUpdate: !!on }); return !!on; });
   ipcMain.on('update-install', () => {
     if (updater && state.status === 'ready') updater.quitAndInstall(false, true);
   });
@@ -37,9 +50,10 @@ function setupUpdater(winGetter) {
   autoUpdater.on('download-progress', (p) => set({ status: 'downloading', percent: Math.round(p.percent) }));
   autoUpdater.on('update-downloaded', (i) => set({ status: 'ready', version: i.version, percent: 100 }));
   autoUpdater.on('error', (e) => set({ status: 'error', error: String((e && e.message) || e).slice(0, 200) }));
-  // 켜고 잠시 뒤 한 번, 그 뒤로는 6시간마다
-  setTimeout(() => check(false), 8000);
-  setInterval(() => check(false), 6 * 60 * 60 * 1000);
+  // 켜고 잠시 뒤 한 번, 그 뒤로는 6시간마다 (자동 확인을 끈 경우는 하지 않음)
+  const auto = () => { if (readSettings().autoUpdate) check(false); };
+  setTimeout(auto, 8000);
+  setInterval(auto, 6 * 60 * 60 * 1000);
 }
 
 async function check(byUser) {

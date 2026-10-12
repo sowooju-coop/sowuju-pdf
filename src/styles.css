@@ -491,3 +491,4 @@ textarea.ftext{resize:none;padding:2px 3px;overflow:hidden}
 .fselect{appearance:none;cursor:pointer;padding:0 3px}
 .fselect:focus{color:var(--ink)}
 .fcheck{padding:0;cursor:pointer}
+.autoupd{display:inline-flex;align-items:center;gap:4px;cursor:pointer}.autoupd input{width:13px;height:13px;accent-color:var(--teal)}

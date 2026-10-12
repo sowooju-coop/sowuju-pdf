@@ -1,12 +1,21 @@
 name: Release
-# v0.1.0 같은 태그를 올리거나 Actions 화면에서 직접 실행하면 Windows 설치 파일을 만들어 GitHub Releases에 올린다.
-# 직접 실행하면 package.json 의 버전(v0.1.0 등)으로 릴리스와 태그가 만들어진다.
+# Windows 설치 파일을 만들어 GitHub Releases에 올린다.
+# - v0.1.0 같은 태그를 올리거나, Actions 화면에서 직접 실행한다 (버전은 package.json).
+# - SignPath 설정(저장소 변수 SIGNPATH_ORGANIZATION_ID, 비밀값 SIGNPATH_API_TOKEN)이 있으면
+#   설치 파일에 코드 서명을 하고, 자동 업데이트 정보(latest.yml)를 서명된 파일에 맞춰 다시 만든다.
+#   설정이 없으면 지금처럼 서명 없이 올린다.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Releases에 올리기 (끄면 만들어 보기만)'
+        type: boolean
+        default: true
 permissions:
   contents: write
+  actions: read
 jobs:
   windows:
     runs-on: windows-latest
@@ -18,6 +27,59 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npx electron-builder --win --publish always
+      - name: 설치 파일 만들기
+        run: npx electron-builder --win --publish never
+      - name: 버전 읽기
+        id: ver
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # ── 코드 서명 (SignPath 승인 후 설정하면 켜진다) ──
+      - name: 서명 전 설치 파일 올리기
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: release/SowujuPDF-Setup-${{ steps.ver.outputs.version }}.exe
+          if-no-files-found: error
+      - name: SignPath 서명 요청 (승인자가 SignPath에서 승인해야 진행)
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'sowuju-pdf' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+      - name: 서명된 파일로 바꾸기
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        shell: bash
+        run: |
+          cp "signed/SowujuPDF-Setup-${{ steps.ver.outputs.version }}.exe" release/
+          node scripts/finalize-release.cjs release "${{ steps.ver.outputs.version }}"
+
+      - name: Releases에 올리기
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          FILES="release/SowujuPDF-Setup-$V.exe release/SowujuPDF-Setup-$V.exe.blockmap release/latest.yml"
+          if gh release view "v$V" > /dev/null 2>&1; then
+            gh release upload "v$V" $FILES --clobber
+          else
+            gh release create "v$V" $FILES --target "$GITHUB_SHA" --prerelease --title "$V" --notes "소우주 PDF $V 시험판. 설치한 뒤에는 새 버전을 저절로 받습니다."
+          fi
+      - name: 만들어 보기 결과 보관
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-dry-run
+          path: |
+            release/*.exe
+            release/latest.yml

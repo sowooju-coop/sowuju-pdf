@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath 아티팩트 설정 (SignPath 웹에서 프로젝트의 Artifact configuration 에 붙여 넣는다).
+  GitHub Actions 가 올린 zip 안의 Windows 설치 파일 하나에 Authenticode 서명을 한다.
+  제품 이름·버전은 설치 파일의 버전 정보와 같아야 한다 (electron-builder 가 package.json 에서 채운다).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="SowujuPDF-Setup-*.exe" product-name="소우주 PDF">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

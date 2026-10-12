@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('sowuju', {
   updateState: () => ipcRenderer.invoke('update-state'),
   checkUpdate: () => ipcRenderer.invoke('update-check'),
   installUpdate: () => ipcRenderer.send('update-install'),
+  getAutoUpdate: () => ipcRenderer.invoke('update-auto-get'),
+  setAutoUpdate: (on) => ipcRenderer.invoke('update-auto-set', on),
   onUpdate: (cb) => {
     const fn = (_e, st) => cb(st);
     ipcRenderer.on('update-state', fn);
