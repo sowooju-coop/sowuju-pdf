@@ -778,7 +778,7 @@ export function Workspace(props: WorkspaceProps) {
         while (next < pages.length && !ocrStop.current) {
           const i = pages[next++];
           const img = await client.renderOcr(i, scale);
-          const r = await recognize(img.png, img.table);
+          const r = await recognize(img.png, img.table, img.cells);
           results.push({ index: i, scale, words: r.words });
           words += r.words.length;
           done++;
