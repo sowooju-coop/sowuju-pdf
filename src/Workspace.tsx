@@ -12,6 +12,7 @@ import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
 import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/TextLayer';
 import { FormLayer } from './components/FormLayer';
+import { SelectLayer, type TextSelection } from './components/SelectLayer';
 import { FindBar, FindLayer, type FindState } from './components/Find';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
@@ -669,6 +670,40 @@ export function Workspace(props: WorkspaceProps) {
     setFind((f) => ({ ...f, open: true, q: picked && picked.length < 60 && !picked.includes('\n') ? picked : f.q }));
   };
 
+  // 보기 화면에서 끌어 고른 글자
+  const [textSel, setTextSel] = useState<TextSelection | null>(null);
+  useEffect(() => { setTextSel(null); }, [doc, hist]);
+  const copySel = useCallback(async (s = textSel) => {
+    if (!s) return;
+    try { await navigator.clipboard.writeText(s.text); say('복사했어요. 다른 곳에 Ctrl+V로 붙여 넣으세요.'); }
+    catch { say('복사하지 못했어요.'); }
+  }, [textSel, say]);
+  const highlightSel = useCallback(async () => {
+    const s = textSel;
+    if (!s) return;
+    setTextSel(null);
+    const marks = s.rects.map((r) => ({ page: s.page, kind: 'highlight' as const, points: [[r[0], r[1]], [r[2], r[3]]] as [number, number][], color: hexRgb(markerColor), width: 0 }));
+    try {
+      applyPages(await client.place([], [], marks), { kind: 'mark', page: s.page }, [s.page]);
+      say('형광펜을 칠했어요. 되돌리기로 뺄 수 있어요.');
+    } catch (e) { say(`칠하지 못했어요. ${(e as Error).message}`); }
+  }, [textSel, markerColor, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ctrl+C: 입력칸 밖에서 고른 글자가 있으면 그것을 복사
+  useEffect(() => {
+    if (!active || !textSel) return;
+    const onCopy = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return;
+      if (window.getSelection()?.toString()) return;
+      e.preventDefault();
+      e.clipboardData?.setData('text/plain', textSel.text);
+      say('복사했어요. 다른 곳에 Ctrl+V로 붙여 넣으세요.');
+    };
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, [active, textSel, say]);
+  const selecting = mode !== 'edit' && !privacy && !drawKind && !placing && !addingText && !placed.length && !texts.length && !shapes.length;
+
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const fitWidthRef = useRef(() => {});
@@ -938,6 +973,12 @@ export function Workspace(props: WorkspaceProps) {
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} root={viewerEl} className="sheet" />
                   {fieldCount > 0 && mode !== 'edit' && !privacy && (
                     <FormLayer client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} onSet={setField} />
+                  )}
+                  {selecting && (
+                    <SelectLayer
+                      client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)}
+                      current={textSel} onSelect={setTextSel} onCopy={() => copySel()} onHighlight={highlightSel}
+                    />
                   )}
                   {find.open && find.hits.some((h) => h.page === i) && (
                     <FindLayer info={p} zoom={zoom} hits={find.hits.filter((h) => h.page === i)} current={findCur?.page === i ? findCur : null} />

@@ -552,3 +552,10 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .findlayer{position:absolute;left:0;top:0;z-index:3;pointer-events:none}
 .fhit{position:absolute;background:rgba(250,204,21,.38);border-radius:2px;mix-blend-mode:multiply}
 .fhit.cur{background:rgba(249,115,22,.5);outline:2px solid #F97316}
+
+/* 글자 골라 복사하기 */
+.selectlayer{position:absolute;left:0;top:0;z-index:1;user-select:none;-webkit-user-select:none}
+.selrect{position:absolute;background:rgba(37,99,235,.28);pointer-events:none;border-radius:1px}
+.selbar{position:absolute;z-index:5;display:flex;gap:2px;padding:4px;border-radius:10px;background:#0F1B2A;box-shadow:var(--shadow-2)}
+.selbar button{display:flex;align-items:center;gap:5px;height:30px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#fff;font:inherit;font-size:13px;cursor:pointer}
+.selbar button:hover{background:rgba(255,255,255,.14)}

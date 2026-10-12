@@ -31,6 +31,15 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: 'copy', title: '글자 골라 복사하기', icon: 'copy', words: '복사 붙여넣기 긁기 드래그 형광펜',
+    steps: [
+      '보기 화면에서 복사할 글자 위를 **눌러서 끌면** 파랗게 골라져요.',
+      '두 번 누르면 낱말 하나, 세 번 누르면 한 줄이 골라져요.',
+      '위에 뜨는 **복사**를 누르거나 **Ctrl + C**를 누르고, 한글·메일 등에 **Ctrl + V**로 붙여 넣으세요.',
+      '**형광펜**을 누르면 고른 글자에 바로 형광펜이 칠해져요.',
+    ],
+  },
+  {
     id: 'edit', title: '글자 고치기', icon: 'edit', words: '수정 오타 바꾸기 이름 날짜 전화번호',
     steps: [
       '위쪽 **편집** 메뉴에서 **글자 고치기**를 누르세요. (키보드 **E**)',
@@ -180,6 +189,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl + O', '파일 열기'],
   ['Ctrl + S', '저장'],
   ['Ctrl + P', '인쇄'],
+  ['Ctrl + C', '끌어 고른 글자 복사'],
   ['Ctrl + F', '문서에서 글자 찾기 (Enter 다음, Shift+Enter 앞)'],
   ['Ctrl + Z / Ctrl + Shift + Z', '되돌리기 / 다시 실행'],
   ['E', '글자 고치기 켜고 끄기'],
