@@ -374,6 +374,19 @@ const handlers: Record<string, (args: any) => any> = {
   save: () => saveBytes('garbage,compress'),
   /** 암호를 걸어 저장한 파일 (작업 중인 문서는 그대로) */
   saveProtected: ({ password, printOnly }: { password: string; printOnly: boolean }) => saveBytes(`garbage,compress,${password ? encryptOptions(password, printOnly) : 'encrypt=none'}`),
+  /** 한 번에 처리의 마지막: 사본에서 문서 정보 지우기·용량 줄이기·암호를 하고 바이트로 (지금 문서는 그대로) */
+  finish: ({ clearInfo, shrink, password, printOnly }: { clearInfo: boolean; shrink: ShrinkLevel | null; password: string; printOnly: boolean }) => {
+    const work = mupdf.Document.openDocument(snapshot(), 'application/pdf') as mupdf.PDFDocument;
+    try {
+      if (clearInfo) clearDocInfo(work);
+      if (shrink) shrinkImages(work, shrink);
+      if (fontsAdded || shrink) try { work.subsetFonts(); } catch { /* 그대로 둔다 */ }
+      const opts = `garbage${shrink ? '=deduplicate,compress-fonts,compress-images' : ''},compress${password ? `,${encryptOptions(password, printOnly)}` : ''}`;
+      return work.saveToBuffer(opts).asUint8Array().slice();
+    } finally {
+      work.destroy();
+    }
+  },
   /** 그림을 줄이고 압축한 사본 */
   shrink: ({ level }: { level: ShrinkLevel }) => {
     // 비교 기준: 지금 문서를 그냥 저장했을 때 크기

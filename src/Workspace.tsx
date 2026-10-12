@@ -13,10 +13,11 @@ import { PlaceLayer, type Placed } from './components/PlaceLayer';
 import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/TextLayer';
 import { FormLayer } from './components/FormLayer';
 import { SelectLayer, type TextSelection } from './components/SelectLayer';
-import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
+import { PageNumberDialog, savedPageNumberOptions, savedWatermarkOptions, WatermarkDialog } from './components/PageMarks';
 import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
 import { OcrDialog, type OcrProgress } from './components/Ocr';
 import { recognize, stopOcr } from './lib/ocr';
+import { RecipeDialog, type RecipeRun } from './components/Recipe';
 import { CompareView } from './components/Compare';
 import { OutlinePanel } from './components/Outline';
 import { SplitDialog } from './components/SplitDialog';
@@ -159,6 +160,7 @@ export function Workspace(props: WorkspaceProps) {
   const [splitOpen, setSplitOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<OpenedFile | null>(null);
+  const [recipeOpen, setRecipeOpen] = useState(false);
   // 왼쪽: 쪽 목록 / 목차
   const [side, setSide] = useState<'pages' | 'outline'>('pages');
   const [outlineCount, setOutlineCount] = useState(0);
@@ -625,6 +627,53 @@ export function Workspace(props: WorkspaceProps) {
     client.textless().then((t) => { if (off) return; setTextless(t); if (t.length && t.length >= doc.pages.length / 2) setScanHint(true); }).catch(() => {});
     return () => { off = true; };
   }, [docKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** 한 번에 처리: 지금 문서(되돌리기 가능하게 문서에 넣고 새 이름 저장) 또는 여러 파일(따로 열어 처리 후 폴더에 저장) */
+  const runRecipe = async ({ recipe: r, password, target }: RecipeRun) => {
+    if (!doc) return;
+    setRecipeOpen(false);
+    await applyPlacedRef.current();
+    const fin = { clearInfo: r.clearInfo, shrink: r.shrink, password: r.lock ? password : '', printOnly: r.printOnly };
+    const marks = async (c: PdfClient) => {
+      if (r.pageNumbers) await c.pageNumbers(savedPageNumberOptions());
+      if (r.watermark.trim()) await c.watermark(savedWatermarkOptions(r.watermark.trim()));
+    };
+    try {
+      if (target === 'current') {
+        setBusy(`${r.name} 처리 중…`);
+        if (r.pageNumbers || r.watermark.trim()) {
+          if (r.pageNumbers) applyPages(await client.pageNumbers(savedPageNumberOptions()), { kind: 'mark', page: cur });
+          if (r.watermark.trim()) applyPages(await client.watermark(savedWatermarkOptions(r.watermark.trim())), { kind: 'mark', page: cur });
+        }
+        const bytes = await client.finish(fin);
+        setBusy(null);
+        if (await saveFile(`${baseName(doc.name)}${r.suffix}.pdf`, bytes)) say(`${r.name}으로 저장했어요.${r.pageNumbers || r.watermark.trim() ? ' 넣은 쪽 번호·워터마크는 되돌리기로 뺄 수 있어요.' : ''}`);
+        return;
+      }
+      let files: OpenedFile[];
+      try { files = await openFiles(); } catch (e) { say((e as Error).message); return; }
+      files = files.filter((f) => fileKind(f) === 'pdf');
+      if (!files.length) return;
+      const out: { name: string; bytes: Uint8Array }[] = [];
+      const skipped: string[] = [];
+      for (let k = 0; k < files.length; k++) {
+        setBusy(`${r.name} 처리 중… ${k + 1} / ${files.length}`);
+        const c = new PdfClient();
+        try {
+          const o = await c.open(files[k].bytes);
+          if (o.needsPassword) { skipped.push(`${files[k].name}(암호)`); continue; }
+          await marks(c);
+          out.push({ name: `${baseName(files[k].name)}${r.suffix}.pdf`, bytes: await c.finish(fin) });
+        } catch { skipped.push(files[k].name); }
+        finally { c.close(); }
+      }
+      setBusy(null);
+      if (out.length) {
+        const w = await saveFiles('처리한 PDF를 저장할 폴더 고르기', out);
+        if (w) say(`PDF ${w.count}개를 ${r.name}으로 저장했어요.${skipped.length ? ` 못 한 파일: ${skipped.join(', ')}` : ''}`);
+      } else say(`처리하지 못했어요. ${skipped.join(', ')}`);
+    } catch (e) { say(`처리하지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  };
   /** 비교할 이전 판 PDF 고르기 */
   const startCompare = async () => {
     await applyPlacedRef.current();
@@ -1022,6 +1071,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('print', '인쇄', () => setPrintOpen(true))}
             {tool('image', '그림으로', () => setImgOpen(true), { title: '쪽을 JPG·PNG 그림 파일로 저장' })}
             {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
+            {tool('batch', '한 번에', () => setRecipeOpen(true), { title: '쪽 번호·워터마크·용량 줄이기·암호 등을 묶어서 한 번에 (여러 파일도)' })}
             {tool('compare', '비교', () => startCompare(), { title: '다른 PDF(이전 판)와 글자가 어디가 다른지 비교' })}
             <span className="vsep" aria-hidden="true" />
             {tool('fit', '폭에 맞추기', () => fitWidth(doc.pages))}
@@ -1424,6 +1474,7 @@ export function Workspace(props: WorkspaceProps) {
           </div>
         </div>
       )}
+      {recipeOpen && <RecipeDialog onClose={() => setRecipeOpen(false)} onRun={runRecipe} />}
       {compareWith && <CompareView client={client} pages={doc.pages} name={doc.name} other={compareWith} onClose={() => setCompareWith(null)} />}
       {ocrOpen && (
         <OcrDialog

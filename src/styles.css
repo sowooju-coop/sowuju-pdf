@@ -671,3 +671,17 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .cmpitem .i{color:#15803D}
 .cmpwait{font-size:13px;color:var(--muted);padding:12px;line-height:1.6}
 .cmperr{margin:40px auto;max-width:480px;padding:20px;border-radius:12px;background:#fff;font-size:14px;line-height:1.6}
+
+/* 한 번에 처리 */
+.rcpchips{display:flex;flex-wrap:wrap;gap:6px}
+.rcpchips .chip{display:inline-flex;align-items:center;height:30px;border:1px solid var(--line,#DDE3E9);border-radius:15px;background:#fff;overflow:hidden}
+.rcpchips .chip.on{border-color:var(--navy,#1E3A5F);background:#EEF3F9}
+.rcpchips .chip button{height:100%;padding:0 12px;border:0;background:transparent;font:inherit;font-size:13px;cursor:pointer}
+.rcpchips .chip.on button{font-weight:700}
+.rcpchips .chip .x{padding:0 8px 0 0;color:var(--muted)}
+.rcpsteps{display:grid;gap:10px;padding:12px 14px;border-radius:10px;background:var(--soft)}
+.rcpsteps .pmcheck{min-height:30px;flex-wrap:wrap}
+.rcpsteps .pmcheck small{color:var(--muted);font-size:12px}
+.rcpsteps .pmcheck.sub{margin-left:26px;font-size:12.5px}
+.rcpin{height:30px;width:160px;border:1px solid var(--line,#DDE3E9);border-radius:6px;padding:0 8px;font:inherit;font-size:13px;background:#fff}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--teal,#0F766E)}

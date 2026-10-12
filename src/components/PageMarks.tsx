@@ -25,13 +25,22 @@ const label = (f: PageNumberOptions['format'], n: number, total: number) => (f =
 interface NumPrefs { pos: string; format: PageNumberOptions['format']; size: number; family: FontFamily; skipFirst: boolean; mirror: boolean; start: number }
 const NUM_DEFAULT: NumPrefs = { pos: 'bc', format: 'dash', size: 10, family: 'sans', skipFirst: false, mirror: false, start: 1 };
 
+const numOptions = (p: NumPrefs): PageNumberOptions => ({ position: [p.pos[0] as 't' | 'b', p.pos[1] as 'l' | 'c' | 'r'], format: p.format, start: Math.max(0, Math.round(p.start) || 1), skipFirst: p.skipFirst, mirror: p.mirror, size: p.size, margin: 28, color: [0.15, 0.15, 0.15], fontFile: fontFile(p.family, false) });
+/** 지난번 쪽 번호 설정 (한 번에 처리용) */
+export const savedPageNumberOptions = () => numOptions(readJson('sowuju.pagenum', NUM_DEFAULT));
+export function describePageNumbers() {
+  const p = readJson('sowuju.pagenum', NUM_DEFAULT);
+  const where = `${p.pos[0] === 't' ? '위' : '아래'} ${p.pos[1] === 'l' ? '왼쪽' : p.pos[1] === 'c' ? '가운데' : '오른쪽'}`;
+  return `${NUM_FORMATS.find((f) => f[0] === p.format)?.[1] ?? '1'} 모양, ${where}${p.skipFirst ? ', 표지 빼고' : ''}`;
+}
+
 export function PageNumberDialog({ info, total, onClose, onApply }: { info: PageInfo; total: number; onClose: () => void; onApply: (o: PageNumberOptions) => void }) {
   const [p, setP] = useState<NumPrefs>(() => readJson('sowuju.pagenum', NUM_DEFAULT));
   const set = (patch: Partial<NumPrefs>) => setP((x) => ({ ...x, ...patch }));
   const last = p.start + (p.skipFirst ? total - 2 : total - 1);
   const apply = () => {
     writeJson('sowuju.pagenum', p);
-    onApply({ position: [p.pos[0] as 't' | 'b', p.pos[1] as 'l' | 'c' | 'r'], format: p.format, start: Math.max(0, Math.round(p.start) || 1), skipFirst: p.skipFirst, mirror: p.mirror, size: p.size, margin: 28, color: [0.15, 0.15, 0.15], fontFile: fontFile(p.family, false) });
+    onApply(numOptions(p));
   };
   const s = 190 / info.height;
   return (
@@ -79,6 +88,12 @@ const WM_DEFAULT: WmPrefs = { text: '사본', diagonal: true, opacity: 0.15, col
 const WM_PRESETS = ['사본', '대외비', '초안', '내부 검토용', '제출용', '견본'];
 const WM_COLORS: [string, string][] = [['#6B7280', '회색'], ['#C8102E', '빨강'], ['#1D4ED8', '파랑']];
 const rgb = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as [number, number, number];
+
+/** 지난번 워터마크 설정에 글자만 바꿔서 (한 번에 처리용) */
+export function savedWatermarkOptions(text: string): WatermarkOptions {
+  const p = readJson('sowuju.watermark', WM_DEFAULT);
+  return { text, size: 0, diagonal: p.diagonal, opacity: p.opacity, color: rgb(p.color), fontFile: fontFile(p.family, p.bold) };
+}
 
 export function WatermarkDialog({ info, selected, onClose, onApply }: { info: PageInfo; selected: number[]; onClose: () => void; onApply: (o: WatermarkOptions) => void }) {
   const [p, setP] = useState<WmPrefs>(() => readJson('sowuju.watermark', WM_DEFAULT));
