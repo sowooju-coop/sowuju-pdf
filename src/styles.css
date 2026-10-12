@@ -492,3 +492,13 @@ textarea.ftext{resize:none;padding:2px 3px;overflow:hidden}
 .fselect:focus{color:var(--ink)}
 .fcheck{padding:0;cursor:pointer}
 .autoupd{display:inline-flex;align-items:center;gap:4px;cursor:pointer}.autoupd input{width:13px;height:13px;accent-color:var(--teal)}
+
+/* 여러 문서 탭 */
+.tabpane{height:100%;display:flex;flex-direction:column}
+.tabpane>.start,.tabpane>.app{flex:1;min-height:0}
+.starttabs{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--surface,#fff);flex:none}
+.doctab{cursor:pointer;color:var(--muted)}
+.doctab:not(.on):hover{background:rgba(255,255,255,.6)}
+.doctab.on{color:var(--ink)}
+.doctabs{overflow-x:auto;scrollbar-width:none}
+.doctab .dname{max-width:220px}
