@@ -3,6 +3,7 @@ import { setUiZoom, type OpenedFile } from './lib/host';
 import { newId } from './lib/library';
 import type { QuickAction } from './components/StartScreen';
 import { UpdateBar } from './components/UpdateBar';
+import { HelpDialog, Welcome } from './components/Help';
 import { Workspace, type TabInfo, type WorkspaceHandle } from './Workspace';
 
 const readPref = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -32,6 +33,17 @@ export default function App() {
     writePref('easyScale', String(easyScale));
     setUiZoom(easy ? easyScale : 1);
   }, [easy, easyScale]);
+
+  // 도움말 (topic: 처음 보여 줄 항목), 처음 켰을 때 안내
+  const [help, setHelp] = useState<{ topic?: string } | null>(null);
+  const [welcome, setWelcome] = useState(() => readPref('sowuju.welcome', '0') !== '1');
+  const openHelp = useCallback((topic?: string) => setHelp({ topic }), []);
+  const closeWelcome = useCallback(() => { setWelcome(false); writePref('sowuju.welcome', '1'); }, []);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'F1') { e.preventDefault(); setHelp({}); } };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
 
   const register = useCallback((id: string, h: WorkspaceHandle | null) => {
     if (h) handles.current.set(id, h); else handles.current.delete(id);
@@ -140,10 +152,13 @@ export default function App() {
             easyScale={easyScale}
             setEasy={setEasy}
             setEasyScale={setEasyScale}
+            onHelp={openHelp}
           />
         </div>
       ))}
       <UpdateBar />
+      {welcome && !help && <Welcome onClose={closeWelcome} onHelp={() => { closeWelcome(); setHelp({}); }} />}
+      {help && <HelpDialog topic={help.topic} onClose={() => setHelp(null)} />}
     </>
   );
 }

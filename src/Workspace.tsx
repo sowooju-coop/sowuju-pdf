@@ -87,6 +87,7 @@ interface WorkspaceProps {
   easyScale: number;
   setEasy: (v: boolean) => void;
   setEasyScale: (v: number) => void;
+  onHelp: (topic?: string) => void;
 }
 
 /** 위쪽 탭 줄 */
@@ -740,7 +741,7 @@ export function Workspace(props: WorkspaceProps) {
     return (
       <>
         {props.tabs.length > 1 && <div className="starttabs"><TabStrip tabs={props.tabs} activeId={tabId} onSelect={props.onSelectTab} onClose={(id) => (id === tabId ? closeDoc() : props.onCloseTab(id))} onNew={props.onNewTab} /></div>}
-        <StartScreen easy={easy} easyScale={easyScale} onEasy={setEasy} onEasyScale={setEasyScale} onOpen={(a) => (a === 'merge' ? doMerge() : doOpen(a))} onOpenRecent={doOpenRecent} />
+        <StartScreen easy={easy} easyScale={easyScale} onEasy={setEasy} onEasyScale={setEasyScale} onHelp={() => props.onHelp()} onOpen={(a) => (a === 'merge' ? doMerge() : doOpen(a))} onOpenRecent={doOpenRecent} />
         {pw && <PasswordDialog pw={pw} onCancel={() => setPw(null)} onSubmit={(v) => load(pw.file, v)} />}
         {busy && <div className="busy"><div>{busy}</div></div>}
         <div className={`toast${toast ? ' show' : ''}`} role="status">{toast}</div>
@@ -768,6 +769,8 @@ export function Workspace(props: WorkspaceProps) {
         <div className="topright">
           <button className="iconbtn" aria-label="실행 취소" title="실행 취소 (Ctrl+Z)" onClick={undo} disabled={!hist.canUndo}><Icon name="undo" size={19} /></button>
           <button className="iconbtn" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z)" onClick={redo} disabled={!hist.canRedo}><Icon name="redo" size={19} /></button>
+          <span className="vsep" aria-hidden="true" />
+          <button className="iconbtn helpbtn" aria-label="도움말" title="도움말 (F1)" onClick={() => props.onHelp(privacy ? 'privacy' : mode === 'edit' ? 'edit' : drawKind ? 'draw' : addingText ? (addingText.note ? 'memo' : 'text') : placing ? (placing.kind === 'stamp' ? 'stamp' : 'sign') : overview ? 'pages' : fieldCount ? 'form' : undefined)}><Icon name="help" size={19} /><span>도움말</span></button>
           <span className="vsep" aria-hidden="true" />
           <button className="btn" onClick={() => setPrintOpen(true)} title="인쇄 (Ctrl+P)"><Icon name="print" size={17} />인쇄</button>
           <button className="btn navy" onClick={doSave} title="저장 (Ctrl+S)">저장</button>

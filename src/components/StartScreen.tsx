@@ -12,6 +12,7 @@ interface Props {
   onEasyScale: (s: number) => void;
   onOpen: (then?: QuickAction) => void;
   onOpenRecent: (r: RecentFile) => void;
+  onHelp: () => void;
 }
 
 const QUICK: { id: QuickAction; icon: string; title: string; sub: string; ready: boolean }[] = [
@@ -32,7 +33,7 @@ function when(t: number) {
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
-export function StartScreen({ easy, easyScale, onEasy, onEasyScale, onOpen, onOpenRecent }: Props) {
+export function StartScreen({ easy, easyScale, onEasy, onEasyScale, onOpen, onOpenRecent, onHelp }: Props) {
   const [recent, setRecent] = useState<RecentFile[]>([]);
   const [query, setQuery] = useState('');
   useEffect(() => { recentList().then(setRecent); }, []);
@@ -51,6 +52,7 @@ export function StartScreen({ easy, easyScale, onEasy, onEasyScale, onOpen, onOp
                 <button key={s} aria-pressed={easyScale === s} className={easyScale === s ? 'on' : ''} style={{ fontSize: 18 + i * 4 }} onClick={() => onEasyScale(s)} aria-label={['글씨 보통', '글씨 크게', '글씨 아주 크게'][i]}>가</button>
               ))}
             </div>
+            <button className="btn xl" onClick={onHelp}><Icon name="help" size={22} />도움말</button>
             <button className="btn xl" onClick={() => onEasy(false)}>일반 화면으로</button>
           </div>
         </header>
@@ -91,6 +93,7 @@ export function StartScreen({ easy, easyScale, onEasy, onEasyScale, onOpen, onOp
           <input type="search" placeholder="최근 문서 찾기" aria-label="최근 문서 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <div className="startright">
+          <button className="pill" onClick={onHelp} title="도움말 (F1)"><Icon name="help" size={16} />도움말</button>
           <button className="pill" onClick={() => onEasy(true)} aria-pressed={false}>
             쉬운 모드<span className="switch" aria-hidden="true"><span /></span>
           </button>
