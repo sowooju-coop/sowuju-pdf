@@ -16,7 +16,7 @@ import { SelectLayer, type TextSelection } from './components/SelectLayer';
 import { PageNumberDialog, savedPageNumberOptions, savedWatermarkOptions, WatermarkDialog } from './components/PageMarks';
 import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
 import { OcrDialog, type OcrProgress } from './components/Ocr';
-import { recognize, stopOcr } from './lib/ocr';
+import { ocrLanes, recognize, stopOcr } from './lib/ocr';
 import { FieldLayer, FIELD_TYPES, type DraftField } from './components/FieldLayer';
 import type { NewFieldType } from './lib/protocol';
 import { CropDialog, ResizeDialog } from './components/PageSize';
@@ -821,12 +821,12 @@ export function Workspace(props: WorkspaceProps) {
     try {
       // 그리기는 PDF 스레드에서 차례로, 읽기는 OCR 일꾼 여럿이 함께
       let next = 0, done = 0;
-      const lanes = Math.max(1, Math.min(3, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+      const lanes = ocrLanes();
       await Promise.all(Array.from({ length: lanes }, async () => {
         while (next < pages.length && !ocrStop.current) {
           const i = pages[next++];
           const img = await client.renderOcr(i, scale);
-          const r = await recognize(img.png, img.table, img.cells);
+          const r = await recognize(img.png);
           results.push({ index: i, scale, words: r.words });
           words += r.words.length;
           done++;

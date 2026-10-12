@@ -115,7 +115,7 @@ export class PdfClient {
   detectFields(index: number) { return this.call<NewField[]>('detectFields', { index }); }
   createFields(fields: NewField[]) { return this.call<EditResult>('createFields', { fields }); }
   /** 글자 읽기용 그림 (흑백, 표 선 지움) */
-  renderOcr(index: number, scale: number) { return this.call<{ png: Uint8Array; table: boolean; cells: [number, number, number, number][] }>('renderOcr', { index, scale }); }
+  renderOcr(index: number, scale: number) { return this.call<{ png: Uint8Array }>('renderOcr', { index, scale }); }
   ocrText(pages: { index: number; scale: number; words: OcrWord[] }[]) { return this.call<EditResult>('ocrText', { pages }); }
   pageNumbers(o: PageNumberOptions) { return this.call<EditResult>('pageNumbers', o); }
   watermark(o: WatermarkOptions) { return this.call<EditResult>('watermark', o); }

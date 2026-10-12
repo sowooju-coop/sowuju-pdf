@@ -135,7 +135,13 @@ app.whenReady().then(() => {
     const { pathname } = new URL(req.url);
     const file = path.normalize(path.join(DIST, decodeURIComponent(pathname)));
     if (file !== DIST && !file.startsWith(DIST + path.sep)) return new Response('Not found', { status: 404 });
-    return net.fetch(pathToFileURL(file).toString());
+    // 교차 출처 격리: 글자 읽기(OCR)가 여러 코어를 함께 쓸 수 있게 한다
+    return net.fetch(pathToFileURL(file).toString()).then((r) => {
+      const headers = new Headers(r.headers);
+      headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+      return new Response(r.body, { status: r.status, statusText: r.statusText, headers });
+    });
   });
   Menu.setApplicationMenu(null);
   createWindow();
