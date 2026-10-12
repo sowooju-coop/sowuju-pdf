@@ -207,7 +207,7 @@ button:disabled{cursor:default}
 .floatnav .vsep{margin:0 4px;height:18px}
 .floatnav .pn,.floatnav .zv{padding:0 6px;font-variant-numeric:tabular-nums}
 .floatnav .zv{min-width:48px;text-align:center}
-.statuspill{position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;height:38px;padding:0 6px 0 16px;border-radius:19px;background:#fff;box-shadow:var(--shadow-2);font-size:13.5px;white-space:nowrap;z-index:3}
+.statuspill{position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;height:38px;padding:0 6px 0 16px;border-radius:19px;background:#fff;box-shadow:var(--shadow-2);font-size:13.5px;white-space:nowrap;z-index:7}
 .statuspill .dot{width:8px;height:8px;border-radius:50%;background:var(--teal)}
 .statuspill button{height:28px;padding:0 12px;border:0;border-radius:14px;background:var(--soft);font-size:13px}
 .statuspill button:hover{background:var(--line2)}
@@ -685,3 +685,19 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .rcpsteps .pmcheck.sub{margin-left:26px;font-size:12.5px}
 .rcpin{height:30px;width:160px;border:1px solid var(--line,#DDE3E9);border-radius:6px;padding:0 8px;font:inherit;font-size:13px;background:#fff}
 .btn.ghost{background:transparent;border-color:transparent;color:var(--teal,#0F766E)}
+
+/* 입력칸 만들기 */
+.fieldlayer{position:absolute;left:0;top:0;z-index:5;cursor:crosshair}
+.fdraft{position:absolute;border:1.5px dashed #2563EB;background:rgba(37,99,235,.08);border-radius:2px;cursor:move;box-sizing:border-box}
+.fdraft.on{border-style:solid;background:rgba(37,99,235,.14)}
+.fdraft.checkbox{border-color:#0F766E;background:rgba(15,118,110,.1)}
+.fdraft.combo{border-color:#7C3AED;background:rgba(124,58,237,.08)}
+.fdraft.drawing{pointer-events:none}
+.fname{position:absolute;left:2px;top:-17px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:4px;background:#2563EB;color:#fff;pointer-events:none}
+.fdraft.checkbox .fname{background:#0F766E}
+.fdraft.combo .fname{background:#7C3AED}
+.fsize{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;border-radius:2px;background:#fff;border:1.5px solid #2563EB;cursor:nwse-resize}
+.fpop{position:absolute;z-index:8;width:280px;display:grid;gap:6px;padding:10px;border-radius:10px;background:#fff;box-shadow:var(--shadow-2);cursor:default}
+.fpop input{height:32px;border:1px solid var(--line,#DDE3E9);border-radius:7px;padding:0 10px;font:inherit;font-size:13.5px}
+.fpop .seg button{flex:1}
+.fdel{display:flex;align-items:center;justify-content:center;gap:5px;height:30px;border:0;border-radius:7px;background:#FDF0F0;color:#B91C1C;font:inherit;font-size:12.5px;cursor:pointer}

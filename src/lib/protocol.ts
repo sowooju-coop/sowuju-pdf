@@ -141,3 +141,7 @@ export interface OcrWord { text: string; x0: number; y0: number; x1: number; y1:
 
 /** 책갈피(목차) 한 항목. y는 쪽 안의 높이(화면 좌표, 위가 0) */
 export interface Bookmark { title: string; page: number; y?: number; open: boolean; children: Bookmark[] }
+
+/** 새로 만들 입력칸. rect는 화면 좌표(pt, 위가 0) */
+export type NewFieldType = 'text' | 'multiline' | 'checkbox' | 'combo';
+export interface NewField { page: number; rect: [number, number, number, number]; type: NewFieldType; name: string; options?: string[] }

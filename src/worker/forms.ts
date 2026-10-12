@@ -177,7 +177,9 @@ async function writeAppearance(doc: mupdf.PDFDocument, o: mupdf.PDFObject, text:
     f.put('SowujuK', ref);
     dr.put('NeedAppearances', false);
   }
-  o.put('DA', doc.newString(`/SowujuK ${num(daSize)} Tf ${color.map(num).join(' ')} rg`));
+  // 우리가 만든 칸(한글 표준 글꼴 KoDotum)은 다른 프로그램에서도 새 글자를 쓸 수 있게 DA를 그대로 둔다
+  const da = o.get('DA');
+  if (!(da.isString() && /\/KoDotum\b/.test(da.asString()))) o.put('DA', doc.newString(`/SowujuK ${num(daSize)} Tf ${color.map(num).join(' ')} rg`));
 }
 
 /** 칸 폭에 맞춰 줄을 나눈다 (줄바꿈 글자는 그대로, 한글은 글자 단위로도 나눈다) */

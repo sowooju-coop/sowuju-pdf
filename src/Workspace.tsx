@@ -17,6 +17,8 @@ import { PageNumberDialog, savedPageNumberOptions, savedWatermarkOptions, Waterm
 import { ImageExportDialog, type ImageExportOptions } from './components/ImageExport';
 import { OcrDialog, type OcrProgress } from './components/Ocr';
 import { recognize, stopOcr } from './lib/ocr';
+import { FieldLayer, FIELD_TYPES, type DraftField } from './components/FieldLayer';
+import type { NewFieldType } from './lib/protocol';
 import { RecipeDialog, type RecipeRun } from './components/Recipe';
 import { CompareView } from './components/Compare';
 import { OutlinePanel } from './components/Outline';
@@ -168,6 +170,11 @@ export function Workspace(props: WorkspaceProps) {
   const [imgOpen, setImgOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<OpenedFile | null>(null);
   const [recipeOpen, setRecipeOpen] = useState(false);
+  // 입력칸 만들기
+  const [fieldTool, setFieldTool] = useState<NewFieldType | null>(null);
+  const [drafts, setDrafts] = useState<DraftField[]>([]);
+  const [activeDraft, setActiveDraft] = useState<string | null>(null);
+  const [detecting, setDetecting] = useState(false);
   // 왼쪽: 쪽 목록 / 목차
   const [side, setSide] = useState<'pages' | 'outline'>('pages');
   const [outlineCount, setOutlineCount] = useState(0);
@@ -681,6 +688,42 @@ export function Workspace(props: WorkspaceProps) {
     } catch (e) { say(`처리하지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
   };
+  // 입력칸 만들기: 시작, 자동으로 찾기, 적용, 끝내기
+  const startFields = async () => {
+    if (fieldTool) { endFields(); return; }
+    await applyPlacedRef.current();
+    setMode('view'); setDrawKind(null); setAddingText(null); setPlacing(null); setPrivacy(null); setOverview(false);
+    setFieldTool('text');
+  };
+  const detect = async (pages: number[]) => {
+    setDetecting(true);
+    try {
+      const found: DraftField[] = [];
+      for (const i of pages) for (const f of await client.detectFields(i)) found.push({ ...f, id: newId() });
+      // 이미 그려 둔 칸과 겹치는 것은 빼고 더한다
+      const ov = (a: DraftField, b: DraftField) => a.page === b.page && Math.min(a.rect[2], b.rect[2]) > Math.max(a.rect[0], b.rect[0]) && Math.min(a.rect[3], b.rect[3]) > Math.max(a.rect[1], b.rect[1]);
+      const add = found.filter((f) => !drafts.some((d) => ov(d, f)));
+      setDrafts((l) => [...l, ...add]);
+      say(add.length ? `칸 ${add.length}개를 찾았어요. 이름을 확인하고, 필요 없는 칸은 눌러서 지우세요.` : '새로 찾은 칸이 없어요. 끌어서 직접 그려 주세요.');
+    } catch (e) { say(`칸을 찾지 못했어요. ${(e as Error).message}`); }
+    finally { setDetecting(false); }
+  };
+  const applyFields = async () => {
+    if (!drafts.length) return;
+    setBusy('입력칸 넣는 중…');
+    try {
+      const pages = [...new Set(drafts.map((d) => d.page))];
+      applyPages(await client.createFields(drafts.map(({ id: _id, ...f }) => ({ ...f, name: f.name.trim() || FIELD_TYPES.find((t) => t.id === f.type)!.label }))), { kind: 'mark', page: drafts[0].page }, pages);
+      say(`입력칸 ${drafts.length}개를 넣었어요. 저장하면 다른 프로그램에서도 칸에 쓸 수 있어요.`);
+      setDrafts([]); setActiveDraft(null); setFieldTool(null);
+      client.fieldCount().then(setFieldCount).catch(() => undefined);
+    } catch (e) { say(`입력칸을 넣지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  };
+  const endFields = () => {
+    if (drafts.length && !window.confirm(`그려 둔 칸 ${drafts.length}개를 넣지 않고 끝낼까요?`)) return;
+    setDrafts([]); setActiveDraft(null); setFieldTool(null);
+  };
   /** 비교할 이전 판 PDF 고르기 */
   const startCompare = async () => {
     await applyPlacedRef.current();
@@ -891,7 +934,7 @@ export function Workspace(props: WorkspaceProps) {
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
   }, [active, textSel, say]);
-  const selecting = mode !== 'edit' && !privacy && !drawKind && !placing && !addingText && !placed.length && !texts.length && !shapes.length;
+  const selecting = mode !== 'edit' && !privacy && !drawKind && !placing && !addingText && !placed.length && !texts.length && !shapes.length && !fieldTool;
 
   /** 쪽 안의 높이(y)까지 맞춰 이동 (목차) */
   const goToY = useCallback((i: number, y?: number) => {
@@ -944,6 +987,8 @@ export function Workspace(props: WorkspaceProps) {
       else if (mod && k === 'f') { e.preventDefault(); if (doc && !document.querySelector('.modal')) { setOverview(false); openFind(); } }
       else if (e.key === 'F3' && find.open) { e.preventDefault(); moveFind(e.shiftKey ? -1 : 1); }
       else if ((e.target as HTMLElement).isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) || document.querySelector('.modal')) return;
+      else if (e.key === 'Escape' && fieldTool) { e.preventDefault(); if (activeDraft) setActiveDraft(null); else endFields(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && fieldTool && activeDraft) { e.preventDefault(); setDrafts((l) => l.filter((d) => d.id !== activeDraft)); setActiveDraft(null); }
       else if (e.key === 'Escape' && addingText) { e.preventDefault(); setAddingText(null); }
       else if (e.key === 'Escape' && privacy?.drawing) { e.preventDefault(); setPrivacy({ ...privacy, drawing: false }); }
       else if (e.key === 'Escape' && drawKind) { e.preventDefault(); setDrawKind(null); }
@@ -985,7 +1030,7 @@ export function Workspace(props: WorkspaceProps) {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length, privacy, active, find.open]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length, privacy, active, find.open, fieldTool, activeDraft, drafts.length]);
 
   // 탐색기에서 PDF를 두 번 눌러 열거나, 이미 켜진 창에 파일을 보낼 때
   const loadRef = useRef(load);
@@ -1114,6 +1159,7 @@ export function Workspace(props: WorkspaceProps) {
             </div>
             <span className="vsep" aria-hidden="true" />
             {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
+            {tool('field', '입력칸', () => startFields(), { on: !!fieldTool, title: '신청서에 글자칸·체크칸을 넣어 작성할 수 있는 PDF로 만들기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('sign', '서명', () => setMarkDialog('sign'), { title: '서명 그리기·불러오기' })}
             {tool('stamp', '직인', () => setMarkDialog('stamp'), { title: '직인 만들기·불러오기' })}
@@ -1203,7 +1249,17 @@ export function Workspace(props: WorkspaceProps) {
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} root={viewerEl} className="sheet" />
-                  {fieldCount > 0 && mode !== 'edit' && !privacy && (
+                  {fieldTool && (
+                    <FieldLayer
+                      index={i} info={p} zoom={zoom} tool={fieldTool}
+                      drafts={drafts.filter((d) => d.page === i)} activeId={activeDraft}
+                      onAdd={(f) => { const d = { ...f, id: newId() }; setDrafts((l) => [...l, d]); setActiveDraft(d.id); }}
+                      onSelect={setActiveDraft}
+                      onChange={(id, patch) => setDrafts((l) => l.map((d) => (d.id === id ? { ...d, ...patch } : d)))}
+                      onRemove={(id) => { setDrafts((l) => l.filter((d) => d.id !== id)); setActiveDraft(null); }}
+                    />
+                  )}
+                  {fieldCount > 0 && mode !== 'edit' && !privacy && !fieldTool && (
                     <FormLayer client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} onSet={setField} />
                   )}
                   {selecting && (
@@ -1300,6 +1356,19 @@ export function Workspace(props: WorkspaceProps) {
           )}
           {find.open && !overview && (
             <FindBar state={find} onQuery={(q) => setFind((f) => ({ ...f, q }))} onMove={moveFind} onClose={() => setFind((f) => ({ ...f, open: false }))} />
+          )}
+          {fieldTool && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              <span><b>입력칸 만들기</b><span className="muted"> · 끌어서 칸을 그리세요{drafts.length ? ` (${drafts.length}개)` : ''}</span></span>
+              <span className="seg" role="group" aria-label="그릴 칸 종류">
+                {FIELD_TYPES.map((t) => <button key={t.id} className={fieldTool === t.id ? 'on' : ''} onClick={() => setFieldTool(t.id)}>{t.label}</button>)}
+              </span>
+              <button onClick={() => detect([cur])} disabled={detecting} title="표의 빈 칸, □, ____ 밑줄을 찾아요">{detecting ? '찾는 중…' : '이 쪽 자동으로'}</button>
+              {doc.pages.length > 1 && <button onClick={() => detect(doc.pages.map((_, k) => k))} disabled={detecting}>모든 쪽</button>}
+              {drafts.length > 0 && <button className="ok" onClick={applyFields}>적용</button>}
+              <button onClick={endFields}>끝내기</button>
+            </div>
           )}
           {drawKind && !overview && (
             <div className="statuspill" role="status">

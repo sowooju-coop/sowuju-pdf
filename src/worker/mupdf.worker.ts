@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { Bookmark, FormField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { Bookmark, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
@@ -10,6 +10,8 @@ import { clearFindCache, findText, pageWords } from './find';
 import { addPageNumbers, addWatermark } from './pageStamp';
 import { addOcrText, textlessPages } from './ocrText';
 import { renderForOcr } from './ocrImage';
+import { createFields } from './formCreate';
+import { detectFields } from './formDetect';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
@@ -322,6 +324,11 @@ const handlers: Record<string, (args: any) => any> = {
     // 쪽 크기는 그대로라 쪽 정보를 다시 읽지 않는다 (쪽이 많을 때 빨라진다)
     return { ...history() };
   },
+  createFields: async ({ fields }: { fields: NewField[] }) => {
+    await edit('입력칸 만들기', () => createFields(requireDoc(), fields));
+    return { ...history() };
+  },
+  detectFields: ({ index }: { index: number }) => detectFields(requireDoc(), index),
   textless: () => textlessPages(requireDoc()),
   renderOcr: ({ index, scale }: { index: number; scale: number }) => renderForOcr(requireDoc(), index, scale),
   outline: () => getOutline(requireDoc()),
