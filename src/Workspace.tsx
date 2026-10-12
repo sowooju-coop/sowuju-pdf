@@ -15,7 +15,7 @@ import { FormLayer } from './components/FormLayer';
 import { SelectLayer, type TextSelection } from './components/SelectLayer';
 import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
 import { SplitDialog } from './components/SplitDialog';
-import { groupLabel } from './lib/ranges';
+import { groupLabel, parseRanges } from './lib/ranges';
 import { FindBar, FindLayer, type FindState } from './components/Find';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
@@ -32,7 +32,8 @@ interface Doc {
   size: number;
   pages: PageInfo[];
 }
-type PrintRange = 'all' | 'current' | 'selected';
+type PrintRange = 'all' | 'current' | 'selected' | 'custom';
+interface PrintOptions { range: PrintRange; custom: number[]; dpi: number; per: 1 | 2 | 4; border: boolean }
 type Tab = 'home' | 'edit' | 'page' | 'note' | 'protect';
 /** 실행 취소 기록 한 칸: 오른쪽 패널의 "이번에 고친 곳"에 쓴다 */
 interface HistItem { kind: 'text' | 'page' | 'mark'; page: number; before?: string; after?: string }
@@ -605,14 +606,22 @@ export function Workspace(props: WorkspaceProps) {
     setCur(order.indexOf(cur));
   }, [client, doc, targets, applyPages, sel, cur]);
 
-  const doPrint = useCallback(async (range: PrintRange, dpi: number) => {
+  const doPrint = useCallback(async ({ range, custom, dpi, per, border }: PrintOptions) => {
     if (!doc) return;
     setPrintOpen(false);
     await applyPlacedRef.current();
-    const list = range === 'all' ? doc.pages.map((_, i) => i) : range === 'current' ? [cur] : targets();
+    const list = range === 'all' ? doc.pages.map((_, i) => i) : range === 'current' ? [cur] : range === 'custom' ? custom : targets();
     const pages: PrintPage[] = [];
     try {
-      for (let k = 0; k < list.length; k++) {
+      // 모아 찍기: per쪽씩 한 장에
+      if (per > 1) {
+        const sheets = Math.ceil(list.length / per);
+        for (let k = 0; k < sheets; k++) {
+          setBusy(`인쇄 준비 중… ${k + 1} / ${sheets}장`);
+          pages.push({ png: await client.renderSheet(list.slice(k * per, (k + 1) * per), per as 2 | 4, dpi, border), landscape: per === 2 });
+        }
+      }
+      else for (let k = 0; k < list.length; k++) {
         setBusy(`인쇄 준비 중… ${k + 1} / ${list.length}쪽`);
         const info = doc.pages[list[k]];
         const landscape = info.width > info.height;
@@ -1331,9 +1340,16 @@ function PasswordDialog({ pw, onCancel, onSubmit }: { pw: { file: OpenedFile; wr
   );
 }
 
-function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel: boolean; pageCount: number; current: number; onClose: () => void; onPrint: (r: PrintRange, dpi: number) => void }) {
+function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel: boolean; pageCount: number; current: number; onClose: () => void; onPrint: (o: PrintOptions) => void }) {
   const [range, setRange] = useState<PrintRange>(hasSel ? 'selected' : 'all');
   const [dpi, setDpi] = useState(300);
+  const [per, setPer] = useState<1 | 2 | 4>(() => { try { return (Number(localStorage.getItem('sowuju.printPer')) || 1) as 1 | 2 | 4; } catch { return 1; } });
+  const [border, setBorder] = useState(true);
+  const [text, setText] = useState('');
+  const parsed = parseRanges(text, pageCount);
+  const custom = parsed.groups.flat();
+  const bad = range === 'custom' && (!!parsed.error || !custom.length);
+  const count = range === 'all' ? pageCount : range === 'current' ? 1 : range === 'custom' ? custom.length : 0;
   const opt = (name: string, checked: boolean, onChange: () => void, title: string, sub: string, disabled = false) => (
     <label className={`opt${checked ? ' on' : ''}${disabled ? ' dis' : ''}`}>
       <input type="radio" name={name} checked={checked} onChange={onChange} disabled={disabled} />
@@ -1342,7 +1358,12 @@ function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel:
   );
   return (
     <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <form className="dlg wide" onSubmit={(e) => { e.preventDefault(); onPrint(range, dpi); }}>
+      <form className="dlg wide" onSubmit={(e) => {
+        e.preventDefault();
+        if (bad) return;
+        try { localStorage.setItem('sowuju.printPer', String(per)); } catch { /* 괜찮음 */ }
+        onPrint({ range, custom, dpi, per, border });
+      }}>
         <h3>인쇄</h3>
         <fieldset>
           <legend>인쇄할 페이지</legend>
@@ -1350,7 +1371,27 @@ function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel:
             {opt('range', range === 'all', () => setRange('all'), '전체', `${pageCount}쪽`)}
             {opt('range', range === 'current', () => setRange('current'), '지금 보는 쪽', `${current}쪽`)}
             {opt('range', range === 'selected', () => setRange('selected'), '고른 쪽', hasSel ? '왼쪽 목록에서 고른 쪽' : '목록에서 먼저 고르세요', !hasSel)}
+            {opt('range', range === 'custom', () => setRange('custom'), '직접 쓰기', '예) 1-3, 7')}
           </div>
+          {range === 'custom' && (
+            <div className="printrange">
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="1-3, 7, 10-" aria-label="인쇄할 쪽" autoFocus />
+              <small className={parsed.error && text.trim() ? 'bad' : ''}>{text.trim() ? (parsed.error ?? `${custom.length}쪽 인쇄`) : '쉼표로 여러 곳을 쓸 수 있어요'}</small>
+            </div>
+          )}
+        </fieldset>
+        <fieldset>
+          <legend>한 장에 몇 쪽</legend>
+          <div className="opts">
+            {([1, 2, 4] as const).map((n) => (
+              <label key={n} className={`opt perop${per === n ? ' on' : ''}`}>
+                <input type="radio" name="per" checked={per === n} onChange={() => setPer(n)} />
+                <span className={`permini per${n}`} aria-hidden="true">{Array.from({ length: n }, (_, i) => <i key={i}>{i + 1}</i>)}</span>
+                <span><b>{n === 1 ? '1쪽 (보통)' : `${n}쪽 모아 찍기`}</b><small>{n === 1 ? '한 장에 한 쪽' : count ? `종이 ${Math.ceil(count / n)}장` : n === 2 ? '가로로 나란히' : '2줄 2칸'}</small></span>
+              </label>
+            ))}
+          </div>
+          {per > 1 && <label className="pmcheck"><input type="checkbox" checked={border} onChange={(e) => setBorder(e.target.checked)} />쪽마다 테두리 선 긋기</label>}
         </fieldset>
         <fieldset>
           <legend>선명도</legend>
@@ -1363,7 +1404,7 @@ function PrintDialog({ hasSel, pageCount, current, onClose, onPrint }: { hasSel:
         <p>다음 화면에서 프린터, 매수, 양면 인쇄를 고를 수 있어요.</p>
         <div className="acts">
           <button type="button" className="btn" onClick={onClose}>취소</button>
-          <button type="submit" className="btn navy" autoFocus>다음</button>
+          <button type="submit" className="btn navy" autoFocus={range !== 'custom'} disabled={bad}>다음</button>
         </div>
       </form>
     </div>

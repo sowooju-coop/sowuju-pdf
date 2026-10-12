@@ -113,6 +113,50 @@ function renderPng(index: number, scale: number, rotate = 0) {
   return png;
 }
 
+/**
+ * 모아 찍기: 여러 쪽을 A4 한 장에 그린다 (2쪽: 가로 용지에 나란히, 4쪽: 세로 용지에 2×2).
+ * 인쇄는 세로 용지 기준이라 2쪽 모아 찍기는 다 그린 뒤 90도 돌려서 넘긴다
+ */
+async function renderSheet(indices: number[], per: 2 | 4, dpi: number, border: boolean) {
+  const s = dpi / 72;
+  const land = per === 2;
+  const W = land ? 842 : 595, H = land ? 595 : 842;
+  const cols = 2, rows = per / 2;
+  const margin = 18, gap = 12;
+  const cw = (W - margin * 2 - gap * (cols - 1)) / cols, ch = (H - margin * 2 - gap * (rows - 1)) / rows;
+  const sheet = new OffscreenCanvas(Math.round(W * s), Math.round(H * s));
+  const g = sheet.getContext('2d')!;
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, sheet.width, sheet.height);
+  for (let k = 0; k < indices.length && k < per; k++) {
+    const page = requireDoc().loadPage(indices[k]);
+    const [x0, y0, x1, y1] = page.getBounds();
+    page.destroy();
+    const pw = x1 - x0, ph = y1 - y0;
+    const f = Math.min(cw / pw, ch / ph);
+    const { bitmap } = await render(indices[k], f * s);
+    const cx = margin + (k % cols) * (cw + gap), cy = margin + Math.floor(k / cols) * (ch + gap);
+    const dx = (cx + (cw - pw * f) / 2) * s, dy = (cy + (ch - ph * f) / 2) * s;
+    g.drawImage(bitmap, dx, dy, pw * f * s, ph * f * s);
+    if (border) {
+      g.strokeStyle = '#9AA3AD';
+      g.lineWidth = Math.max(1, s * 0.5);
+      g.strokeRect(dx, dy, pw * f * s, ph * f * s);
+    }
+    bitmap.close();
+  }
+  let out = sheet;
+  if (land) {
+    out = new OffscreenCanvas(sheet.height, sheet.width);
+    const r = out.getContext('2d')!;
+    r.translate(out.width, 0);
+    r.rotate(Math.PI / 2);
+    r.drawImage(sheet, 0, 0);
+  }
+  const blob = await out.convertToBlob({ type: 'image/png' });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
 function rotatePages(indices: number[], delta: number) {
   const d = requireDoc();
   for (const i of indices) {
@@ -230,6 +274,7 @@ const handlers: Record<string, (args: any) => any> = {
   pages: () => pageInfos(),
   render: ({ index, scale, rotate }) => render(index, scale, rotate),
   renderPng: ({ index, scale, rotate }) => renderPng(index, scale, rotate),
+  renderSheet: ({ indices, per, dpi, border }) => renderSheet(indices, per, dpi, border),
   rotate: async ({ indices, delta }) => { await edit('돌리기', () => rotatePages(indices, delta)); return { pages: pageInfos(), ...history() }; },
   delete: async ({ indices }) => { await edit('지우기', () => deletePages(indices)); return { pages: pageInfos(), ...history() }; },
   move: async ({ order }: { order: number[] }) => { await edit('순서', () => requireDoc().rearrangePages(order)); return { pages: pageInfos(), ...history() }; },
