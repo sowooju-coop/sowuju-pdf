@@ -116,7 +116,7 @@ export function StartScreen({ easy, easyScale, onEasy, onEasyScale, onOpen, onOp
               <span className="s3"><i className="l1" /><i /><i className="l3" /><i className="l4" /><i className="l5" /></span>
             </span>
             <span className="dzt">여기에 파일을 끌어다 놓으세요</span>
-            <span className="dzs">PDF 파일을 놓으면 바로 열려요</span>
+            <span className="dzs">{isApp ? 'PDF·한글·워드·엑셀 파일을 놓으면 바로 열려요' : 'PDF 파일을 놓으면 바로 열려요'}</span>
           </button>
         </section>
 

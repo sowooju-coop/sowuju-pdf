@@ -17,6 +17,8 @@ export interface OpenedFile {
   bytes: Uint8Array;
   /** 설치형에서만 있음. 최근 문서에 기록할 때 쓴다 */
   path?: string;
+  /** 한글·워드 등을 PDF로 바꿔 연 경우 원래 파일 이름 */
+  convertedFrom?: string;
 }
 
 export interface RecentFile {
@@ -27,7 +29,9 @@ export interface RecentFile {
 }
 
 interface AppBridge {
-  openFile(): Promise<OpenedFile | null>;
+  openFile(): Promise<OpenedFile | { error: string } | null>;
+  convertPath(path: string): Promise<OpenedFile | { error: string }>;
+  onBusy(cb: (msg: string | null) => void): () => void;
   openFiles(): Promise<OpenedFile[]>;
   saveFile(name: string, bytes: Uint8Array): Promise<string | null>;
   saveFiles(title: string, files: { name: string; bytes: Uint8Array }[]): Promise<{ dir: string; count: number } | null>;
@@ -60,8 +64,13 @@ declare global {
 
 export const isApp = !!window.sowuju;
 
-export function openFile(): Promise<OpenedFile | null> {
-  if (window.sowuju) return window.sowuju.openFile();
+/** 문서 열기 창. 설치형에서는 한글·워드·엑셀 파일을 고르면 PDF로 바꿔서 연다 (못 바꾸면 오류) */
+export async function openFile(): Promise<OpenedFile | null> {
+  if (window.sowuju) {
+    const r = await window.sowuju.openFile();
+    if (r && 'error' in r) throw new Error(r.error);
+    return r;
+  }
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -87,13 +96,34 @@ export function openFiles(): Promise<OpenedFile[]> {
   });
 }
 
-export const fileKind = (f: { name: string }): 'pdf' | 'image' | null =>
-  /\.pdf$/i.test(f.name) ? 'pdf' : /\.(jpe?g|png)$/i.test(f.name) ? 'image' : null;
+export const OFFICE_RE = /\.(hwpx?|docx?|xlsx?|pptx?|rtf|odt|ods|odp|csv|txt)$/i;
+export const fileKind = (f: { name: string }): 'pdf' | 'image' | 'office' | null =>
+  /\.pdf$/i.test(f.name) ? 'pdf' : /\.(jpe?g|png)$/i.test(f.name) ? 'image' : OFFICE_RE.test(f.name) ? 'office' : null;
 
-/** 끌어다 놓은 파일 읽기 */
+/** 끌어다 놓은 파일 읽기. 한글·워드·엑셀은 설치형에서 PDF로 바꾼다 */
 export async function readDropped(f: File): Promise<OpenedFile> {
-  return { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()), path: window.sowuju?.pathForFile(f) || undefined };
+  const path = window.sowuju?.pathForFile(f) || undefined;
+  if (fileKind(f) === 'office') {
+    if (!window.sowuju || !path) throw new Error('한글·워드·엑셀 파일은 설치형 프로그램에서 열 수 있어요.');
+    const r = await window.sowuju.convertPath(path);
+    if ('error' in r) throw new Error(r.error);
+    return r;
+  }
+  return { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()), path };
 }
+
+/** 여러 파일을 차례로 읽는다 (문서 바꾸기는 한 번에 하나씩). 못 읽은 파일은 onError로 알린다 */
+export async function readDroppedAll(files: File[], onError: (name: string, msg: string) => void): Promise<OpenedFile[]> {
+  const out: OpenedFile[] = [];
+  for (const f of files) {
+    try { out.push(await readDropped(f)); }
+    catch (e) { onError(f.name, (e as Error).message); }
+  }
+  return out;
+}
+
+/** 오래 걸리는 일 안내 (설치형에서 문서를 PDF로 바꾸는 중) */
+export const onBusy = (cb: (msg: string | null) => void) => window.sowuju?.onBusy(cb) ?? (() => {});
 
 const MIME: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
 

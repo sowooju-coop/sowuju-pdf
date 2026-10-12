@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { PdfClient } from '../lib/pdfClient';
 import type { PageInfo } from '../lib/protocol';
-import { fileKind, readDropped, type OpenedFile } from '../lib/host';
+import { fileKind, readDroppedAll, type OpenedFile } from '../lib/host';
 import { PageCanvas } from './PageCanvas';
 import { reorderFor, useSortable } from '../lib/useSortable';
 import { SortOverlay } from './SortGhost';
@@ -64,7 +64,9 @@ export function PageRail(props: Props) {
     setDropAt(null);
     setFileOver(false);
     const files = [...e.dataTransfer.files].filter((f) => fileKind(f));
-    if (files.length) props.onInsertFiles(at, await Promise.all(files.map(readDropped)));
+    if (!files.length) return;
+    const read = await readDroppedAll(files, (name, msg) => window.alert(`"${name}"을 넣지 못했어요.\n${msg}`));
+    if (read.length) props.onInsertFiles(at, read);
   };
 
   return (

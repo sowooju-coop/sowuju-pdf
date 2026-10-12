@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { setUiZoom, type OpenedFile } from './lib/host';
+import { onBusy, setUiZoom, type OpenedFile } from './lib/host';
 import { newId } from './lib/library';
 import type { QuickAction } from './components/StartScreen';
 import { UpdateBar } from './components/UpdateBar';
@@ -44,6 +44,10 @@ export default function App() {
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, []);
+
+  // 설치형에서 한글·워드 문서를 PDF로 바꾸는 동안 안내
+  const [converting, setConverting] = useState<string | null>(null);
+  useEffect(() => onBusy(setConverting), []);
 
   const register = useCallback((id: string, h: WorkspaceHandle | null) => {
     if (h) handles.current.set(id, h); else handles.current.delete(id);
@@ -156,6 +160,7 @@ export default function App() {
           />
         </div>
       ))}
+      {converting && <div className="busy"><div>{converting}<small>한글·오피스 프로그램을 잠깐 빌려 써요. 보안 확인 창이 뜨면 '허용'을 눌러 주세요.</small></div></div>}
       <UpdateBar />
       {welcome && !help && <Welcome onClose={closeWelcome} onHelp={() => { closeWelcome(); setHelp({}); }} />}
       {help && <HelpDialog topic={help.topic} onClose={() => setHelp(null)} />}

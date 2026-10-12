@@ -16,7 +16,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let win = null;
-let pendingPath = process.argv.slice(1).find((a) => /\.pdf$/i.test(a)) || null;
+let pendingPath = process.argv.slice(1).find((a) => /\.(pdf|hwpx?|docx?|xlsx?|pptx?|rtf|odt|ods|odp|csv|txt)$/i.test(a)) || null;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -42,14 +42,37 @@ function createWindow() {
   else win.loadURL('app://local/index.html');
 }
 
+const { convertToPdf, isOffice, OFFICE_EXT } = require('./convert.cjs');
+
+/**
+ * 경로의 파일을 읽는다. 한글·워드·엑셀·파워포인트면 PDF로 바꿔서 돌려준다
+ * (바꾼 문서는 원래 파일과 다르므로 path를 비워 '저장'할 때 새 이름을 묻게 한다)
+ */
+async function readForOpen(p) {
+  if (!isOffice(p)) return { name: path.basename(p), bytes: new Uint8Array(await fs.readFile(p)), path: p };
+  win?.webContents.send('busy', `"${path.basename(p)}"을 PDF로 바꾸는 중…`);
+  try {
+    const bytes = await convertToPdf(p);
+    return { name: path.basename(p, path.extname(p)) + '.pdf', bytes, convertedFrom: path.basename(p) };
+  } finally {
+    win?.webContents.send('busy', null);
+  }
+}
+const OPEN_FILTERS = [
+  { name: 'PDF·한글·워드·엑셀', extensions: ['pdf', ...OFFICE_EXT] },
+  { name: 'PDF 문서', extensions: ['pdf'] },
+  { name: '한글 문서', extensions: ['hwp', 'hwpx'] },
+  { name: '워드·엑셀·파워포인트', extensions: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'rtf', 'odt', 'ods', 'odp', 'csv', 'txt'] },
+];
+const OPENABLE = new RegExp(`\\.(pdf|${OFFICE_EXT.join('|')})$`, 'i');
+
 // 실행할 때 받은 파일은 화면이 준비된 뒤 화면 쪽에서 가져간다 (먼저 보내면 받을 곳이 없어 사라진다)
 ipcMain.handle('take-pending', async () => {
   const p = pendingPath;
   pendingPath = null;
   if (!p) return null;
   try {
-    const bytes = await fs.readFile(p);
-    return { name: path.basename(p), bytes: new Uint8Array(bytes), path: p };
+    return await readForOpen(p);
   } catch (e) {
     dialog.showErrorBox('파일을 열지 못했어요', String(e.message || e));
     return null;
@@ -58,8 +81,7 @@ ipcMain.handle('take-pending', async () => {
 
 async function sendPath(p) {
   try {
-    const bytes = await fs.readFile(p);
-    win.webContents.send('open-path', { name: path.basename(p), bytes: new Uint8Array(bytes), path: p });
+    win.webContents.send('open-path', await readForOpen(p));
   } catch (e) {
     dialog.showErrorBox('파일을 열지 못했어요', String(e.message || e));
   }
@@ -68,7 +90,7 @@ async function sendPath(p) {
 // 같은 프로그램을 두 번 실행하면 기존 창에서 파일을 연다
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', (_e, argv) => {
-  const p = argv.slice(1).find((a) => /\.pdf$/i.test(a));
+  const p = argv.slice(1).find((a) => OPENABLE.test(a));
   if (win) {
     if (win.isMinimized()) win.restore();
     win.focus();
@@ -125,22 +147,25 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('open-file', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'PDF 열기', filters: [{ name: 'PDF 문서', extensions: ['pdf'] }], properties: ['openFile'] });
+  const r = await dialog.showOpenDialog(win, { title: '문서 열기', filters: OPEN_FILTERS, properties: ['openFile'] });
   if (r.canceled || !r.filePaths[0]) return null;
-  const bytes = await fs.readFile(r.filePaths[0]);
-  return { name: path.basename(r.filePaths[0]), bytes: new Uint8Array(bytes), path: r.filePaths[0] };
+  try { return await readForOpen(r.filePaths[0]); }
+  catch (e) { return { error: String(e.message || e) }; }
 });
 
 // 쪽 넣기·합치기용: PDF와 사진을 여러 개 고른다
 ipcMain.handle('open-files', async () => {
   const r = await dialog.showOpenDialog(win, {
     title: '넣을 파일 고르기',
-    filters: [{ name: 'PDF·사진', extensions: ['pdf', 'jpg', 'jpeg', 'png'] }],
+    filters: [{ name: 'PDF·사진·한글·워드·엑셀', extensions: ['pdf', 'jpg', 'jpeg', 'png', ...OFFICE_EXT] }],
     properties: ['openFile', 'multiSelections'],
   });
   if (r.canceled) return [];
   const out = [];
-  for (const p of r.filePaths) out.push({ name: path.basename(p), bytes: new Uint8Array(await fs.readFile(p)), path: p });
+  for (const p of r.filePaths) {
+    try { out.push(await readForOpen(p)); }
+    catch (e) { dialog.showErrorBox(`"${path.basename(p)}"을 넣지 못했어요`, String(e.message || e)); }
+  }
   return out;
 });
 
@@ -162,6 +187,12 @@ ipcMain.handle('recent-add', async (_e, item) => {
   const list = (await readRecent()).filter((x) => x.path !== item.path);
   list.unshift({ path: item.path, name: String(item.name), pages: Number(item.pages) || 0, openedAt: Date.now() });
   await fs.writeFile(RECENT(), JSON.stringify(list.slice(0, 30)), 'utf8');
+});
+// 끌어다 놓은 한글·워드 파일: 화면 쪽은 경로만 알고 있으므로 여기서 바꾼다
+ipcMain.handle('convert-path', async (_e, p) => {
+  if (typeof p !== 'string' || !isOffice(p)) return { error: 'PDF로 바꿀 수 없는 파일이에요.' };
+  try { return await readForOpen(p); }
+  catch (e) { return { error: String(e.message || e) }; }
 });
 ipcMain.handle('open-recent', async (_e, p) => {
   const list = await readRecent();

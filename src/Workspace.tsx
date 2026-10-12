@@ -4,7 +4,7 @@ import type { PageInfo, ReplaceRequest } from './lib/protocol';
 import { baselineOffset, fontFile, FONTS, LINE_HEIGHT, loadFonts, textWidth } from './lib/fonts';
 import { dateFormats, hexRgb, loadTextStyle, saveTextStyle } from './lib/textTools';
 import type { EditStyle } from './lib/textDiff';
-import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, saveFiles, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
+import { fileKind, openFile, openFiles, openRecent, printPages, readDroppedAll, recentAdd, saveFile, saveFiles, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
 import { PageRail } from './components/PageRail';
 import { PageGrid } from './components/PageGrid';
 import { PageMenu, type PageActions, type PageMenuState } from './components/PageMenu';
@@ -212,7 +212,8 @@ export function Workspace(props: WorkspaceProps) {
       setDoc({ name: file.name, path: file.path, size: file.bytes.length, pages: r.pages! });
       setSel(new Set());
       setCur(0);
-      setDirty(false);
+      // 한글·워드에서 바꾼 문서는 아직 PDF 파일로 저장된 적이 없다
+      setDirty(!!file.convertedFrom);
       setSavedAt(null);
       setHist({ canUndo: false, canRedo: false });
       setLog({ done: [], undone: [] });
@@ -232,6 +233,7 @@ export function Workspace(props: WorkspaceProps) {
       if (act === 'privacy') setTimeout(() => startPrivacyRef.current(), 0);
       client.info().then((i) => setEncrypted(!!i.encryption && i.encryption !== 'None')).catch(() => setEncrypted(false));
       setFieldCount(0);
+      if (file.convertedFrom) say(`"${file.convertedFrom}"을 PDF로 바꿔 열었어요. 저장하면 PDF 파일로 따로 저장돼요.`);
       client.fieldCount().then((n) => { setFieldCount(n); if (n) say(`이 문서에는 입력칸이 ${n}개 있어요. 칸을 눌러 바로 쓰세요.`); }).catch(() => undefined);
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
       return true;
@@ -245,12 +247,13 @@ export function Workspace(props: WorkspaceProps) {
 
   // 이미 문서가 열려 있으면 새 탭으로 연다
   const doOpen = useCallback(async (then?: QuickAction) => {
-    const f = await openFile();
+    let f: OpenedFile | null;
+    try { f = await openFile(); } catch (e) { say((e as Error).message); return; }
     if (!f) return;
     if (doc) { props.openInNewTab(f, then); return; }
     pendingAction.current = then;
     load(f);
-  }, [load, doc, props]);
+  }, [load, doc, props, say]);
 
   const doOpenRecent = useCallback(async (r: RecentFile) => {
     try {
@@ -422,7 +425,7 @@ export function Workspace(props: WorkspaceProps) {
     const skipped: string[] = [];
     for (let k = 0; k < files.length; k++) {
       const f = files[k], kind = fileKind(f);
-      if (!kind) { skipped.push(f.name); continue; }
+      if (!kind || kind === 'office') { skipped.push(f.name); continue; }
       setBusy(`쪽 넣는 중… ${k + 1} / ${files.length}`);
       try {
         const r = await client.insertFile(pos, f.bytes, kind);
@@ -878,8 +881,9 @@ export function Workspace(props: WorkspaceProps) {
     const onDrop = async (e: DragEvent) => {
       e.preventDefault();
       const list = [...(e.dataTransfer?.files ?? [])].filter((f) => fileKind(f));
-      if (!list.length) { say('PDF나 JPG·PNG 파일만 넣을 수 있어요.'); return; }
-      const files = await Promise.all(list.map(readDropped));
+      if (!list.length) { say('PDF, 한글·워드·엑셀, JPG·PNG 파일을 넣을 수 있어요.'); return; }
+      const files = await readDroppedAll(list, (name, msg) => say(`"${name}": ${msg}`));
+      if (!files.length) return;
       if (doc) { insertFiles(cur + 1, files); return; }
       const first = files.findIndex((f) => fileKind(f) === 'pdf');
       if (first < 0) { say('사진을 PDF로 만들려면 시작 화면의 "합치기"를 써 주세요.'); return; }
