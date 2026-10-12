@@ -4,7 +4,7 @@ import type { PageInfo, ReplaceRequest } from './lib/protocol';
 import { baselineOffset, fontFile, FONTS, LINE_HEIGHT, loadFonts, textWidth } from './lib/fonts';
 import { dateFormats, hexRgb, loadTextStyle, saveTextStyle } from './lib/textTools';
 import type { EditStyle } from './lib/textDiff';
-import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
+import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, saveFiles, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
 import { PageRail } from './components/PageRail';
 import { PageGrid } from './components/PageGrid';
 import { PageMenu, type PageActions, type PageMenuState } from './components/PageMenu';
@@ -14,6 +14,8 @@ import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/Text
 import { FormLayer } from './components/FormLayer';
 import { SelectLayer, type TextSelection } from './components/SelectLayer';
 import { PageNumberDialog, WatermarkDialog } from './components/PageMarks';
+import { SplitDialog } from './components/SplitDialog';
+import { groupLabel } from './lib/ranges';
 import { FindBar, FindLayer, type FindState } from './components/Find';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
@@ -148,6 +150,7 @@ export function Workspace(props: WorkspaceProps) {
   const [fieldCount, setFieldCount] = useState(0);
   const [lockOpen, setLockOpen] = useState(false);
   const [shrinkOpen, setShrinkOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
   const [markOpen, setMarkOpen] = useState<'num' | 'wm' | null>(null);
   const [encrypted, setEncrypted] = useState(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -555,6 +558,25 @@ export function Workspace(props: WorkspaceProps) {
     finally { setBusy(null); }
   }, [client, doc, targets, say]);
 
+  /** 여러 PDF로 나눠 한 폴더에 저장 */
+  const split = useCallback(async (groups: number[][]) => {
+    if (!doc) return;
+    setSplitOpen(false);
+    await applyPlacedRef.current();
+    const base = baseName(doc.name), width = String(groups.length).length;
+    const files: { name: string; bytes: Uint8Array }[] = [];
+    try {
+      for (let i = 0; i < groups.length; i++) {
+        setBusy(`나누는 중… ${i + 1} / ${groups.length}`);
+        files.push({ name: `${base}_${String(i + 1).padStart(width, '0')}_${groupLabel(groups[i])}.pdf`, bytes: await client.extract(groups[i]) });
+      }
+      setBusy(null);
+      const r = await saveFiles('나눈 PDF를 저장할 폴더 고르기', files);
+      if (r) say(`PDF ${r.count}개로 나눠 저장했어요.`);
+    } catch (e) { say(`나누지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, doc, say]);
+
   const reorder = useCallback(async (order: number[]) => {
     applyPages(await client.move(order), { kind: 'page', page: order.indexOf(cur) });
     setSel(new Set());
@@ -926,6 +948,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('water', '워터마크', () => setMarkOpen('wm'), { title: '"사본", "대외비" 같은 글자를 쪽 가운데에 연하게 넣기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('save', '새 PDF로 저장', () => extract(), { title: '고른 쪽(없으면 지금 보는 쪽)만 새 PDF로 저장' })}
+            {tool('split', '나누기', () => setSplitOpen(true), { title: '한 쪽씩, 몇 쪽씩, 원하는 범위대로 여러 PDF로 나누기' })}
             {tool('trash', '지우기', () => remove(), { danger: true })}
             <span className="hint">{sel.size ? `${sel.size}쪽 골랐어요` : 'Ctrl·Shift로 여러 쪽 고르기'}</span>
           </div>
@@ -1247,6 +1270,7 @@ export function Workspace(props: WorkspaceProps) {
           </div>
         </div>
       )}
+      {splitOpen && <SplitDialog total={doc.pages.length} selected={[...sel].sort((a, b) => a - b)} onClose={() => setSplitOpen(false)} onSplit={split} />}
       {markOpen === 'num' && (
         <PageNumberDialog info={doc.pages[0]} total={doc.pages.length} onClose={() => setMarkOpen(null)} onApply={async (o) => {
           setMarkOpen(null); await applyPlacedRef.current(); setBusy('쪽 번호 넣는 중…');

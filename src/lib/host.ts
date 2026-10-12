@@ -30,6 +30,7 @@ interface AppBridge {
   openFile(): Promise<OpenedFile | null>;
   openFiles(): Promise<OpenedFile[]>;
   saveFile(name: string, bytes: Uint8Array): Promise<string | null>;
+  saveFiles(title: string, files: { name: string; bytes: Uint8Array }[]): Promise<{ dir: string; count: number } | null>;
   print(title: string, pages: PrintPage[]): Promise<{ ok: boolean; reason?: string }>;
   onOpenPath(cb: (file: OpenedFile) => void): () => void;
   /** 프로그램을 실행할 때 함께 받은 파일 (한 번만) */
@@ -94,15 +95,29 @@ export async function readDropped(f: File): Promise<OpenedFile> {
   return { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()), path: window.sowuju?.pathForFile(f) || undefined };
 }
 
+const MIME: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+
 export async function saveFile(name: string, bytes: Uint8Array): Promise<string | null> {
   if (window.sowuju) return window.sowuju.saveFile(name, bytes);
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: MIME[name.split('.').pop()!.toLowerCase()] ?? 'application/octet-stream' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
   return name;
+}
+
+/**
+ * 여러 파일 저장. 설치형은 폴더를 골라 한 번에 쓰고, 브라우저는 하나씩 내려받는다.
+ */
+export async function saveFiles(title: string, files: { name: string; bytes: Uint8Array }[]): Promise<{ dir: string; count: number } | null> {
+  if (window.sowuju) return window.sowuju.saveFiles(title, files);
+  for (const f of files) {
+    await saveFile(f.name, f.bytes);
+    await new Promise((r) => setTimeout(r, 250)); // 브라우저가 연달아 받기를 막지 않게
+  }
+  return { dir: '내려받기 폴더', count: files.length };
 }
 
 export const recentList = (): Promise<RecentFile[]> => window.sowuju?.recentList() ?? Promise.resolve([]);

@@ -202,6 +202,8 @@ function extractPages(indices: number[]) {
   const map = out.newGraftMap();
   [...indices].sort((a, b) => a - b).forEach((idx) => map.graftPage(-1, requireDoc(), idx));
   map.destroy();
+  // 새로 넣은 글꼴은 쓴 글자만 남긴다 (쪽마다 나눠 저장할 때 파일이 커지지 않게)
+  if (fontsAdded) try { out.subsetFonts(); } catch { /* 그대로 둔다 */ }
   const bytes = out.saveToBuffer('garbage,compress').asUint8Array().slice();
   out.destroy();
   return bytes;

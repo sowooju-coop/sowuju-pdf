@@ -170,11 +170,36 @@ ipcMain.handle('open-recent', async (_e, p) => {
   return { name: path.basename(p), bytes: new Uint8Array(bytes), path: p };
 });
 
+const SAVE_FILTERS = {
+  pdf: { title: 'PDF 저장', filters: [{ name: 'PDF 문서', extensions: ['pdf'] }] },
+  png: { title: '그림 저장', filters: [{ name: 'PNG 그림', extensions: ['png'] }] },
+  jpg: { title: '그림 저장', filters: [{ name: 'JPG 그림', extensions: ['jpg', 'jpeg'] }] },
+};
 ipcMain.handle('save-file', async (_e, name, bytes) => {
-  const r = await dialog.showSaveDialog(win, { title: 'PDF 저장', defaultPath: name, filters: [{ name: 'PDF 문서', extensions: ['pdf'] }] });
+  const ext = String(name).split('.').pop().toLowerCase();
+  const r = await dialog.showSaveDialog(win, { defaultPath: name, ...(SAVE_FILTERS[ext === 'jpeg' ? 'jpg' : ext] ?? SAVE_FILTERS.pdf) });
   if (r.canceled || !r.filePath) return null;
   await fs.writeFile(r.filePath, Buffer.from(bytes));
   return r.filePath;
+});
+
+// 여러 파일을 고른 폴더에 저장 (같은 이름이 있으면 덮어쓰지 않고 (2), (3)을 붙인다)
+ipcMain.handle('save-files', async (_e, title, files) => {
+  const r = await dialog.showOpenDialog(win, { title, buttonLabel: '이 폴더에 저장', properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const dir = r.filePaths[0];
+  const written = [];
+  for (const f of files) {
+    const safe = String(f.name).replace(/[\\/:*?"<>|]/g, '_');
+    const dot = safe.lastIndexOf('.');
+    const stem = dot > 0 ? safe.slice(0, dot) : safe, ext = dot > 0 ? safe.slice(dot) : '';
+    let target = path.join(dir, safe);
+    for (let k = 2; await fs.access(target).then(() => true, () => false); k++) target = path.join(dir, `${stem} (${k})${ext}`);
+    await fs.writeFile(target, Buffer.from(f.bytes));
+    written.push(target);
+  }
+  if (written[0]) shell.showItemInFolder(written[0]);
+  return { dir, count: written.length };
 });
 
 // 인쇄: 페이지 이미지를 임시 폴더에 쓰고, 숨긴 창에서 운영체제 인쇄 창을 띄운다

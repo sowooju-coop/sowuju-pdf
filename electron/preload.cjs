@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('sowuju', {
   openFile: () => ipcRenderer.invoke('open-file'),
   openFiles: () => ipcRenderer.invoke('open-files'),
   saveFile: (name, bytes) => ipcRenderer.invoke('save-file', name, bytes),
+  saveFiles: (title, files) => ipcRenderer.invoke('save-files', title, files),
   print: (title, pages) => ipcRenderer.invoke('print', title, pages),
   onOpenPath: (cb) => {
     const fn = (_e, file) => cb(file);

@@ -584,3 +584,13 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .pmlabel{position:absolute;color:#262626;line-height:1;white-space:nowrap}
 .pmwm{position:absolute;left:50%;top:50%;white-space:nowrap;line-height:1;transform-origin:center}
 .pmnote{font-size:12.5px!important}
+
+/* PDF 나누기 */
+.splitn{display:inline-flex;align-items:center;gap:6px}
+.splitn input{width:64px;height:28px;border:1px solid var(--line,#DDE3E9);border-radius:6px;padding:0 8px;font:inherit}
+.splitrange{display:grid;gap:6px;font-size:13px;color:var(--ink2)}
+.splitrange code{background:var(--soft);padding:1px 6px;border-radius:4px}
+.splitrange input{height:38px;border:1px solid var(--line,#DDE3E9);border-radius:8px;padding:0 12px;font:inherit;font-size:15px}
+.splitres{display:grid;gap:2px;padding:12px 14px;border-radius:10px;background:#EEF6F0;font-size:13px;color:#24553A}
+.splitres b{font-size:14.5px}
+.splitres.bad{background:#FDEDEF;color:#9B1C2E}
