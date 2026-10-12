@@ -112,6 +112,6 @@ export class PdfClient {
   redact(areas: { page: number; rects: [number, number, number, number][] }[], clearInfo: boolean) { return this.call<EditResult>('redact', { areas, clearInfo }); }
   /** password 가 빈 문자열이면 암호를 푼 파일 */
   saveProtected(password: string, printOnly: boolean) { return this.call<Uint8Array>('saveProtected', { password, printOnly }); }
-  shrink(level: 'light' | 'normal' | 'strong') { return this.call<{ bytes: Uint8Array; images: number }>('shrink', { level }); }
+  shrink(level: 'light' | 'normal' | 'strong') { return this.call<{ bytes: Uint8Array; images: number; before: number }>('shrink', { level }); }
   info() { return this.call<{ encryption: string; author: string; creator: string; producer: string }>('info'); }
 }

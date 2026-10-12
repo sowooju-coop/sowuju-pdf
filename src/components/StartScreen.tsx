@@ -20,7 +20,7 @@ const QUICK: { id: QuickAction; icon: string; title: string; sub: string; ready:
   { id: 'merge', icon: 'merge', title: '합치기', sub: 'PDF·사진을 하나로', ready: true },
   { id: 'pages', icon: 'pages', title: '페이지 정리', sub: '순서·회전·삭제', ready: true },
   { id: 'print', icon: 'print', title: '인쇄', sub: '선명하게, 원하는 쪽만', ready: true },
-  { id: 'privacy', icon: 'shield', title: '개인정보 지우기', sub: '흔적 없이 완전히', ready: false },
+  { id: 'privacy', icon: 'shield', title: '개인정보 지우기', sub: '흔적 없이 완전히', ready: true },
 ];
 
 function when(t: number) {

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { PageInfo } from '../lib/protocol';
-import type { Mark } from '../lib/library';
+import { markName, type Mark } from '../lib/library';
 import { Icon } from './Icon';
 
 export interface Placed {
@@ -98,7 +98,7 @@ export function PlaceLayer({ index, info, zoom, items, activeId, placing, onPlac
           style={{ left: it.x * zoom, top: it.y * zoom, width: it.w * zoom, height: it.h * zoom }}
           onPointerDown={begin(it, 'move')}
           role="img"
-          aria-label={it.kind === 'sign' ? '넣은 서명' : '넣은 직인'}
+          aria-label={`넣은 ${markName(it.kind)}`}
         >
           <img src={it.src} alt="" draggable={false} />
           {it.id === activeId && <span className="handle" onPointerDown={begin(it, 'size')} aria-label="크기 바꾸기" />}

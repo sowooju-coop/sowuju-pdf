@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PdfClient, type EditResult } from './lib/pdfClient';
 import type { PageInfo, ReplaceRequest } from './lib/protocol';
-import { baselineOffset, fontFile, FONTS, LINE_HEIGHT, loadFonts } from './lib/fonts';
+import { baselineOffset, fontFile, FONTS, LINE_HEIGHT, loadFonts, textWidth } from './lib/fonts';
 import { dateFormats, hexRgb, loadTextStyle, saveTextStyle } from './lib/textTools';
 import type { EditStyle } from './lib/textDiff';
 import { fileKind, openFile, openFiles, openRecent, printPages, readDropped, recentAdd, saveFile, setUiZoom, type OpenedFile, type PrintPage, type RecentFile } from './lib/host';
@@ -10,11 +10,12 @@ import { PageGrid } from './components/PageGrid';
 import { PageMenu, type PageActions, type PageMenuState } from './components/PageMenu';
 import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
-import { TextLayer, type TextBox } from './components/TextLayer';
+import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/TextLayer';
 import { UpdateBar } from './components/UpdateBar';
+import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
 import type { ShapeKind } from './lib/protocol';
-import { dataUrlBytes, newId, type Mark, type MarkKind } from './lib/library';
+import { dataUrlBytes, fileToDataUrl, loadImage, markName, newId, type Mark, type MarkKind } from './lib/library';
 import { EditLayer, type EditingState } from './components/EditLayer';
 import { PageCanvas } from './components/PageCanvas';
 import { Icon, Logo } from './components/Icon';
@@ -86,10 +87,15 @@ export default function App() {
   const [activePlaced, setActivePlaced] = useState<string | null>(null);
   // 글자 추가: 놓아 둔 글자 상자, 넣을 곳 고르는 중, 고른 상자, 마지막에 쓴 모양
   const [texts, setTexts] = useState<TextBox[]>([]);
-  const [addingText, setAddingText] = useState<{ text: string } | null>(null);
+  const [addingText, setAddingText] = useState<{ text: string; note?: boolean } | null>(null);
   const [activeText, setActiveText] = useState<string | null>(null);
   const [dateMenu, setDateMenu] = useState(false);
   // 펜·형광펜·도형: 놓아 둔 것, 고른 것, 지금 쓰는 도구와 색
+  // 보호: 개인정보 지우기 상태, 암호·용량 대화상자, 처음 열 때 암호가 있었는지
+  const [privacy, setPrivacy] = useState<PrivacyState | null>(null);
+  const [lockOpen, setLockOpen] = useState(false);
+  const [shrinkOpen, setShrinkOpen] = useState(false);
+  const [encrypted, setEncrypted] = useState(false);
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [activeShape, setActiveShape] = useState<string | null>(null);
   const [drawKind, setDrawKind] = useState<ShapeKind | null>(null);
@@ -161,6 +167,9 @@ export default function App() {
       setShapes([]); setActiveShape(null); setDrawKind(null);
       if (act === 'print') setPrintOpen(true);
       if (act === 'sign') setMarkDialog('sign');
+      setPrivacy(null);
+      if (act === 'privacy') setTimeout(() => startPrivacyRef.current(), 0);
+      client.info().then((i) => setEncrypted(!!i.encryption && i.encryption !== 'None')).catch(() => setEncrypted(false));
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
       return true;
     } catch (e) {
@@ -191,15 +200,24 @@ export default function App() {
     if (!placed.length && !boxes.length && !shapes.length) { setTexts([]); setActiveText(null); setAddingText(null); return; }
     const marks = shapes.map((sh) => ({ page: sh.page, kind: sh.kind, points: sh.points, color: hexRgb(sh.color), width: sh.width }));
     const items = placed.map((p) => ({ page: p.page, x: p.x, y: p.y, w: p.w, h: p.h, png: dataUrlBytes(p.src) }));
+    // 메모는 노란 쪽지(형광펜과 같은 곱하기 섞기 상자)를 먼저 깔고 그 위에 글자를 쓴다
+    const notes = boxes.filter((b) => b.note).map((b) => {
+      const ls = b.text.split('\n');
+      const w = Math.max(...ls.map((l) => textWidth(l, b.family, b.bold, b.size))) + NOTE_PAD.x * 2;
+      const h = ls.length * LINE_HEIGHT * b.size + NOTE_PAD.y * 2;
+      return { page: b.page, kind: 'highlight' as const, points: [[b.x, b.y], [b.x + w, b.y + h]] as [number, number][], color: hexRgb(NOTE_COLOR), width: 0 };
+    });
+    marks.unshift(...notes);
     const lines = boxes.flatMap((b) => {
       const base = baselineOffset(b.family, b.bold, b.size);
+      const ox = b.note ? NOTE_PAD.x : 0, oy = b.note ? NOTE_PAD.y : 0;
       return b.text.split('\n').map((text, i) => ({
-        page: b.page, x: b.x, y: b.y + base + i * LINE_HEIGHT * b.size, size: b.size,
+        page: b.page, x: b.x + ox, y: b.y + oy + base + i * LINE_HEIGHT * b.size, size: b.size,
         color: hexRgb(b.color), fontFile: fontFile(b.family, b.bold), text,
       }));
     });
     const kinds = new Set(placed.map((p) => p.kind));
-    const what = [kinds.has('sign') && '서명', kinds.has('stamp') && '직인', boxes.length && '글자', shapes.length && '그린 것'].filter(Boolean).join('·');
+    const what = [kinds.has('sign') && '서명', kinds.has('stamp') && '직인', kinds.has('image') && '그림', boxes.length && '글자', shapes.length && '그린 것'].filter(Boolean).join('·');
     setBusy('넣는 중…');
     try {
       applyPages(await client.place(items, lines, marks), { kind: 'mark', page: (placed[0] ?? boxes[0] ?? shapes[0]).page }, [...new Set([...placed, ...boxes, ...shapes].map((x) => x.page))]);
@@ -237,15 +255,83 @@ export default function App() {
   }, []);
 
   /** 글자 넣을 곳 고르기 시작 (text: 날짜처럼 미리 정한 글자) */
-  const startText = useCallback((text = '') => {
+  const startText = useCallback((text = '', note = false) => {
     setDrawKind(null);
     setPlacing(null);
     setMode('view');
     setOverview(false);
     setDateMenu(false);
-    setAddingText({ text });
-    say(text ? '날짜를 넣을 곳을 누르세요. Esc를 누르면 취소돼요.' : '글자를 넣을 곳을 누르세요. Esc를 누르면 취소돼요.');
+    setAddingText({ text, note });
+    say(note ? '메모를 붙일 곳을 누르세요. Esc를 누르면 취소돼요.' : text ? '날짜를 넣을 곳을 누르세요. Esc를 누르면 취소돼요.' : '글자를 넣을 곳을 누르세요. Esc를 누르면 취소돼요.');
   }, [say]);
+
+  /** 개인정보 찾기 (옵션이 바뀌면 다시 찾는다. 직접 그린 상자는 그대로) */
+  const scanPrivacy = useCallback(async (base: PrivacyState | null, patch: Partial<PrivacyState> = {}) => {
+    const opts = { rrnBackOnly: true, clearInfo: true, search: [] as string[], manual: [] as PrivacyState['manual'], drawing: false, ...(base ?? {}), ...patch };
+    setBusy('개인정보를 찾는 중…');
+    try {
+      const r = await client.findPrivate(opts.rrnBackOnly, opts.search);
+      setPrivacy({ ...opts, hits: r.hits, noText: r.noText, checked: new Set(r.hits.map((h) => h.id)) });
+    } catch (e) { say(`찾지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, say]);
+  const startPrivacy = useCallback(async () => {
+    await applyPlacedRef.current();
+    setDrawKind(null); setAddingText(null); setPlacing(null); setMode('view'); setOverview(false); setTab('protect');
+    await scanPrivacy(null);
+  }, [scanPrivacy]);
+  const startPrivacyRef = useRef(startPrivacy);
+  startPrivacyRef.current = startPrivacy;
+  const [confirmRedact, setConfirmRedact] = useState(false);
+  const applyPrivacy = useCallback(async () => {
+    if (!privacy) return;
+    setConfirmRedact(false);
+    const areas = privacyAreas(privacy);
+    setBusy('지우는 중…');
+    try {
+      const r = await client.redact(areas, privacy.clearInfo);
+      applyPages(r, { kind: 'page', page: areas[0]?.page ?? 0 }, [...new Set(areas.map((a) => a.page))]);
+      say(`${areas.length}곳을 지웠어요. 저장하기 전에는 되돌리기로 되돌릴 수 있어요.`);
+      setPrivacy(null);
+    } catch (e) { say(`지우지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [privacy, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 암호 걸어 저장 / 암호 풀어 저장 */
+  const saveLocked = useCallback(async (password: string, printOnly: boolean) => {
+    if (!doc) return;
+    setLockOpen(false);
+    await applyPlacedRef.current();
+    setBusy(password ? '암호를 거는 중…' : '암호를 푸는 중…');
+    try {
+      const bytes = await client.saveProtected(password, printOnly);
+      const where = await saveFile(`${baseName(doc.name)}_${password ? '암호' : '암호해제'}.pdf`, bytes);
+      if (where) say(password ? '암호를 건 파일로 저장했어요. 암호를 잊지 않게 적어 두세요.' : '암호를 푼 파일로 저장했어요.');
+    } catch (e) { say(`저장하지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  }, [client, doc, say]);
+
+  /** 그림 파일을 골라 쪽에 놓기 (서명·직인과 같은 방식으로 옮기고 크기를 바꾼다) */
+  const pickImageFile = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg';
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f || !doc) return;
+      try {
+        const src = await fileToDataUrl(f);
+        const img = await loadImage(src);
+        const page = doc.pages[cur];
+        // 96dpi 기준 크기, 쪽 폭의 절반을 넘지 않게
+        let w = img.naturalWidth * 0.75, h = img.naturalHeight * 0.75;
+        const k = Math.min(1, (page.width * 0.5) / w, (page.height * 0.5) / h);
+        w *= k; h *= k;
+        pickMarkRef.current({ id: newId(), kind: 'image', src, w, h });
+      } catch { say('그림을 열지 못했어요. PNG나 JPG 파일을 골라 주세요.'); }
+    };
+    input.click();
+  }, [doc, cur, say]);
 
   const pickMark = useCallback((m: Mark) => {
     setMarkDialog(null);
@@ -253,8 +339,10 @@ export default function App() {
     setOverview(false);
     setPlacing(m);
     setDrawKind(null); setAddingText(null);
-    say(`${m.kind === 'sign' ? '서명' : '직인'}을 넣을 곳을 누르세요. Esc를 누르면 취소돼요.`);
+    say(`${markName(m.kind)}을 넣을 곳을 누르세요. Esc를 누르면 취소돼요.`);
   }, [say]);
+  const pickMarkRef = useRef(pickMark);
+  pickMarkRef.current = pickMark;
 
   /** 파일들을 at 자리부터 차례로 넣는다 */
   const insertFiles = useCallback(async (at: number, files: OpenedFile[], navigate = true) => {
@@ -520,6 +608,7 @@ export default function App() {
       else if (mod && k === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
       else if ((e.target as HTMLElement).isContentEditable || (e.target as HTMLElement).tagName === 'INPUT' || document.querySelector('.modal')) return;
       else if (e.key === 'Escape' && addingText) { e.preventDefault(); setAddingText(null); }
+      else if (e.key === 'Escape' && privacy?.drawing) { e.preventDefault(); setPrivacy({ ...privacy, drawing: false }); }
       else if (e.key === 'Escape' && drawKind) { e.preventDefault(); setDrawKind(null); }
       else if (e.key === 'Escape' && activeShape) { e.preventDefault(); setActiveShape(null); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && activeShape) { e.preventDefault(); setShapes((l) => l.filter((x) => x.id !== activeShape)); setActiveShape(null); }
@@ -558,7 +647,7 @@ export default function App() {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length, privacy]);
 
   // 탐색기에서 PDF를 두 번 눌러 열거나, 이미 켜진 창에 파일을 보낼 때
   const loadRef = useRef(load);
@@ -662,7 +751,7 @@ export default function App() {
                 </div>
               )}
             </div>
-            {tool('image', '그림')}
+            {tool('image', '그림', pickImageFile, { title: '사진·그림 파일을 쪽 위에 넣기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('highlight', '형광펜', () => toggleDraw('highlight'), { on: drawKind === 'highlight', title: '끌어서 형광펜 칠하기' })}
             {tool('pen', '펜', () => toggleDraw('pen'), { on: drawKind === 'pen', title: '자유롭게 그리기' })}
@@ -701,15 +790,16 @@ export default function App() {
         )}
         {tab === 'note' && (
           <div className="tools">
-            {tool('note', '메모')}
-            {tool('highlight', '형광펜')}
-            {tool('pen', '밑줄')}
+            {tool('note', '메모', () => (addingText?.note ? setAddingText(null) : startText('', true)), { on: !!addingText?.note, title: '노란 쪽지처럼 붙이는 메모 (인쇄에도 나와요)' })}
+            {tool('highlight', '형광펜', () => toggleDraw('highlight'), { on: drawKind === 'highlight' })}
+            {tool('pen', '밑줄', () => toggleDraw('line'), { on: drawKind === 'line', title: '끌어서 밑줄 긋기' })}
           </div>
         )}
         {tab === 'protect' && (
           <div className="tools">
-            {tool('shield', '개인정보 지우기')}
-            {tool('lock', '암호 걸기')}
+            {tool('shield', '개인정보 지우기', () => (privacy ? setPrivacy(null) : startPrivacy()), { on: !!privacy, title: '주민번호·전화번호 등을 찾아 완전히 지우기' })}
+            {tool('lock', encrypted ? '암호 걸기·풀기' : '암호 걸기', () => setLockOpen(true), { title: '열 때 암호를 묻는 파일로 저장' })}
+            {tool('save', '용량 줄이기', () => setShrinkOpen(true), { title: '사진·스캔을 줄여 메일로 보내기 좋게' })}
           </div>
         )}
       </div>
@@ -744,6 +834,14 @@ export default function App() {
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} root={viewerEl} className="sheet" />
+                  {privacy && (
+                    <RedactLayer
+                      index={i} info={p} zoom={zoom} state={privacy}
+                      onToggle={(id) => { const c = new Set(privacy.checked); if (c.has(id)) c.delete(id); else c.add(id); setPrivacy({ ...privacy, checked: c }); }}
+                      onAddBox={(page, rect) => setPrivacy({ ...privacy, manual: [...privacy.manual, { id: newId(), page, rect }] })}
+                      onRemoveBox={(id) => setPrivacy({ ...privacy, manual: privacy.manual.filter((m) => m.id !== id) })}
+                    />
+                  )}
                   {(drawKind || shapes.some((x) => x.page === i)) && (
                     <ShapeLayer
                       index={i} info={p} zoom={zoom}
@@ -784,7 +882,7 @@ export default function App() {
                       adding={addingText}
                       onAdd={(page, x, y) => {
                         const st = textStyle.current;
-                        const b: TextBox = { id: newId(), page, x, y: Math.max(0, y - st.size * LINE_HEIGHT * 0.5), text: addingText?.text ?? '', ...st };
+                        const b: TextBox = { id: newId(), page, x, y: Math.max(0, y - st.size * LINE_HEIGHT * 0.5), text: addingText?.text ?? '', ...st, note: addingText?.note };
                         setTexts((l) => [...l, b]); setActiveText(b.id); setAddingText(null);
                       }}
                       onChange={(id, patch) => {
@@ -838,7 +936,7 @@ export default function App() {
           {addingText && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
-              <span><b>{addingText.text ? '날짜' : '글자'} 넣을 곳을 누르세요</b><span className="muted"> · Esc로 취소</span></span>
+              <span><b>{addingText.note ? '메모' : addingText.text ? '날짜' : '글자'} 넣을 곳을 누르세요</b><span className="muted"> · Esc로 취소</span></span>
               <button onClick={() => setAddingText(null)}>취소</button>
             </div>
           )}
@@ -853,7 +951,7 @@ export default function App() {
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               {placing
-                ? <span><b>{placing.kind === 'sign' ? '서명' : '직인'} 넣을 곳을 누르세요</b><span className="muted"> · Esc로 취소</span></span>
+                ? <span><b>{markName(placing.kind)} 넣을 곳을 누르세요</b><span className="muted"> · Esc로 취소</span></span>
                 : <span><b>{placed.length}개 놓았어요</b><span className="muted"> · 끌어서 옮기고 모서리로 크기를 바꾼 뒤 적용</span></span>}
               {placing
                 ? <button onClick={() => setPlacing(null)}>취소</button>
@@ -880,10 +978,20 @@ export default function App() {
         </main>
 
         <aside className="inspector" aria-label="속성">
-          {activeItem ? (
+          {privacy ? (
+            <PrivacyPanel
+              state={privacy}
+              busy={!!busy}
+              onChange={(patch) => setPrivacy({ ...privacy, ...patch })}
+              onRescan={(patch) => scanPrivacy(privacy, patch)}
+              onGo={goTo}
+              onApply={() => setConfirmRedact(true)}
+              onClose={() => setPrivacy(null)}
+            />
+          ) : activeItem ? (
             <>
               <section>
-                <h2>{activeItem.kind === 'sign' ? '넣은 서명' : '넣은 직인'}</h2>
+                <h2>넣은 {markName(activeItem.kind)}</h2>
                 <div className="markprev checker"><img src={activeItem.src} alt="" /></div>
                 <dl className="props">
                   <dt>크기</dt><dd>{pt2mm(activeItem.w)} × {pt2mm(activeItem.h)}mm</dd>
@@ -978,6 +1086,27 @@ export default function App() {
               <button className="btn" onClick={() => setConfirmClose(false)}>돌아가기</button>
               <button className="btn danger" onClick={closeDoc}>저장하지 않고 닫기</button>
               <button className="btn navy" autoFocus onClick={async () => { await doSave(); closeDoc(); }}>저장하고 닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {lockOpen && <LockDialog encrypted={encrypted} onClose={() => setLockOpen(false)} onSave={saveLocked} />}
+      {shrinkOpen && (
+        <ShrinkDialog
+          onClose={() => setShrinkOpen(false)}
+          onRun={async (level) => { await applyPlacedRef.current(); try { return await client.shrink(level); } catch (e) { say(`줄이지 못했어요. ${(e as Error).message}`); return null; } }}
+          onSave={async (bytes) => { const w = await saveFile(`${baseName(doc.name)}_용량줄임.pdf`, bytes); if (w) { say('줄인 파일로 저장했어요.'); setShrinkOpen(false); } }}
+        />
+      )}
+      {confirmRedact && privacy && (
+        <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) setConfirmRedact(false); }}>
+          <div className="dlg">
+            <h3>{privacyAreas(privacy).length}곳을 지울까요?</h3>
+            <p>고른 곳의 글자와 그림을 파일에서 완전히 지우고 검은 상자로 덮어요. 지운 글자는 복사하거나 검색해도 나오지 않아요.</p>
+            <p className="small muted">저장하기 전에는 되돌리기로 되돌릴 수 있어요.</p>
+            <div className="acts">
+              <button className="btn" onClick={() => setConfirmRedact(false)}>취소</button>
+              <button className="btn navy" autoFocus onClick={applyPrivacy}>지우기</button>
             </div>
           </div>
         </div>

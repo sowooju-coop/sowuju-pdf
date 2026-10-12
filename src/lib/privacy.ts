@@ -80,6 +80,8 @@ function boxes(line: TextLine, i0: number, i1: number): [number, number, number,
     x0 = Math.min(x0, ...xs); x1 = Math.max(x1, ...xs); y0 = Math.min(y0, ...ys); y1 = Math.max(y1, ...ys);
   }
   if (!isFinite(x0)) return [];
-  const pad = (y1 - y0) * 0.08;
-  return [[x0 - pad, y0 - pad, x1 + pad, y1 + pad]];
+  // 글자 상자는 옆 글자와 맞닿아 있어서, 양옆을 조금 안으로 들여야 이웃 글자(주민번호의 '-' 등)가 함께 지워지지 않는다.
+  // 검은 상자는 화면 미리보기와 같은 자리에 그려진다
+  const h = y1 - y0, px = Math.min(h * 0.12, (x1 - x0) * 0.1);
+  return [[x0 + px, y0 - h * 0.05, x1 - px, y1 + h * 0.05]];
 }

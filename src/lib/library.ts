@@ -1,5 +1,8 @@
 // 서명·직인 보관함과 이미지 다듬기 도구
-export type MarkKind = 'sign' | 'stamp';
+export type MarkKind = 'sign' | 'stamp' | 'image';
+
+/** 화면에 쓰는 이름 */
+export const markName = (k: MarkKind) => (k === 'sign' ? '서명' : k === 'stamp' ? '직인' : '그림');
 
 export interface Mark {
   id: string;

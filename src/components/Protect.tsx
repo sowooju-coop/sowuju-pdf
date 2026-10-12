@@ -152,7 +152,7 @@ export function RedactLayer({ index, info, zoom, state, onToggle, onAddBox, onRe
 }
 
 /** 암호 걸기 / 풀기 */
-export function PasswordDialog({ encrypted, onClose, onSave }: { encrypted: boolean; onClose: () => void; onSave: (password: string, printOnly: boolean) => void }) {
+export function LockDialog({ encrypted, onClose, onSave }: { encrypted: boolean; onClose: () => void; onSave: (password: string, printOnly: boolean) => void }) {
   const [mode, setMode] = useState<'set' | 'remove'>('set');
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
@@ -201,14 +201,14 @@ export function PasswordDialog({ encrypted, onClose, onSave }: { encrypted: bool
 const fmt = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 /** 용량 줄이기: 단계를 골라 줄여 보고, 결과를 확인한 뒤 저장 */
-export function ShrinkDialog({ size, onClose, onRun, onSave }: {
-  size: number;
+export function ShrinkDialog({ onClose, onRun, onSave }: {
   onClose: () => void;
-  onRun: (level: 'light' | 'normal' | 'strong') => Promise<{ bytes: Uint8Array; images: number } | null>;
+  onRun: (level: 'light' | 'normal' | 'strong') => Promise<{ bytes: Uint8Array; images: number; before: number } | null>;
   onSave: (bytes: Uint8Array) => void;
 }) {
   const [level, setLevel] = useState<'light' | 'normal' | 'strong'>('normal');
-  const [result, setResult] = useState<{ bytes: Uint8Array; images: number; level: string } | null>(null);
+  const [result, setResult] = useState<{ bytes: Uint8Array; images: number; before: number; level: string } | null>(null);
+  const size = result?.before ?? 0;
   const [running, setRunning] = useState(false);
   const opt = (id: 'light' | 'normal' | 'strong', title: string, sub: string) => (
     <label className={`opt${level === id ? ' on' : ''}`}>

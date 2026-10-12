@@ -15,7 +15,13 @@ export interface TextBox {
   family: FontFamily;
   bold: boolean;
   color: string;
+  /** 메모: 노란 쪽지 바탕 위에 쓴 글자 (인쇄에도 나온다) */
+  note?: boolean;
 }
+
+/** 메모 쪽지의 안쪽 여백 (pt) */
+export const NOTE_PAD = { x: 6, y: 4 };
+export const NOTE_COLOR = '#FFF1A6';
 
 export const TEXT_COLORS = [
   { id: '#111827', label: '검정' },
@@ -30,7 +36,7 @@ interface Props {
   boxes: TextBox[];
   activeId: string | null;
   /** 글자 넣을 곳을 고르는 중 (text 가 있으면 그 글자를 바로 놓는다: 날짜 등) */
-  adding: { text: string } | null;
+  adding: { text: string; note?: boolean } | null;
   onAdd: (page: number, x: number, y: number) => void;
   onChange: (id: string, patch: Partial<TextBox>) => void;
   onSelect: (id: string | null) => void;
@@ -126,7 +132,7 @@ function Box({ box, zoom, active, onFocus, onBlur, onText, onMove }: { box: Text
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className={`textbox${active ? ' on' : ''}`} style={{ left: box.x * zoom, top: box.y * zoom }}>
+    <div className={`textbox${active ? ' on' : ''}${box.note ? ' note' : ''}`} style={{ left: box.x * zoom, top: box.y * zoom, ...(box.note ? { padding: `${NOTE_PAD.y * zoom}px ${NOTE_PAD.x * zoom}px`, background: NOTE_COLOR } : {}) }}>
       <span className="tgrip" onPointerDown={onMove} title="끌어서 옮기기" aria-label="끌어서 옮기기"><Icon name="move" size={12} /></span>
       <div
         ref={ref}
@@ -136,7 +142,7 @@ function Box({ box, zoom, active, onFocus, onBlur, onText, onMove }: { box: Text
         spellCheck={false}
         role="textbox"
         aria-multiline="true"
-        aria-label="새 글자"
+        aria-label={box.note ? '메모' : '새 글자'}
         style={{ fontFamily: FONTS[box.family].css, fontWeight: box.bold ? 700 : 400, fontSize: box.size * zoom, lineHeight: LINE_HEIGHT, color: box.color }}
         onFocus={onFocus}
         onBlur={(e) => onBlur(e.relatedTarget as HTMLElement | null)}

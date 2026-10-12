@@ -271,12 +271,14 @@ const handlers: Record<string, (args: any) => any> = {
   saveProtected: ({ password, printOnly }: { password: string; printOnly: boolean }) => saveBytes(`garbage,compress,${password ? encryptOptions(password, printOnly) : 'encrypt=none'}`),
   /** 그림을 줄이고 압축한 사본 */
   shrink: ({ level }: { level: ShrinkLevel }) => {
+    // 비교 기준: 지금 문서를 그냥 저장했을 때 크기
+    const before = saveBytes('garbage,compress').length;
     const work = mupdf.Document.openDocument(snapshot(), 'application/pdf') as mupdf.PDFDocument;
     try {
       const images = shrinkImages(work, level);
       try { work.subsetFonts(); } catch { /* 그대로 둔다 */ }
       const bytes = work.saveToBuffer('garbage=deduplicate,compress,compress-fonts,compress-images').asUint8Array().slice();
-      return { bytes, images };
+      return { bytes, images, before };
     } finally {
       work.destroy();
     }
