@@ -12,6 +12,8 @@ interface Props extends PageActions {
   client: PdfClient;
   pages: PageInfo[];
   rev: number;
+  /** 쪽마다 따로 바뀐 횟수 (그 쪽만 다시 그리기) */
+  pageRev?: Record<number, number>;
   cur: number;
   sel: Set<number>;
   onThumb: (i: number, e: React.MouseEvent) => void;
@@ -24,7 +26,7 @@ const thumbZoom = (p: PageInfo) => Math.min(96 / p.width, 136 / p.height);
 
 /** 왼쪽 쪽 목록: 끌어서 순서 바꾸기, 오른쪽 클릭 메뉴, 쪽 사이 + 단추, 파일 끌어다 넣기 */
 export function PageRail(props: Props) {
-  const { client, pages, rev, cur, sel, onThumb, targetsFor } = props;
+  const { client, pages, rev, pageRev, cur, sel, onThumb, targetsFor } = props;
   /** 파일을 끌어다 넣을 자리: 0이면 맨 앞, n이면 n번째 쪽 뒤 */
   const [dropAt, setDropAt] = useState<number | null>(null);
   const [fileOver, setFileOver] = useState(false);
@@ -97,7 +99,7 @@ export function PageRail(props: Props) {
             aria-label={`${i + 1}쪽`}
             aria-current={cur === i ? 'page' : undefined}
           >
-            <PageCanvas client={client} index={i} info={p} zoom={thumbZoom(p)} rev={rev} root={null} className="tbox" />
+            <PageCanvas client={client} index={i} info={p} zoom={thumbZoom(p)} rev={rev * 10000 + (pageRev?.[i] ?? 0)} root={null} className="tbox" thumb />
             <span className="num">{i + 1}</span>
           </button>
         </div>

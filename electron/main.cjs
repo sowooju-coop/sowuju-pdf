@@ -10,7 +10,8 @@ const DIST = path.join(__dirname, '..', 'dist');
 
 // 빌드된 화면을 app:// 주소로 제공한다. file:// 에서는 모듈 작업 스레드와 WebAssembly 로딩이 막히기 때문
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  // codeCache: 화면 코드와 PDF 엔진(WebAssembly)을 한 번 해석해 두고 다음 실행부터 다시 쓴다
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, codeCache: true } },
 ]);
 
 let win = null;

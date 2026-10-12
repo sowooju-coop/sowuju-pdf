@@ -10,6 +10,8 @@ interface Props {
   client: PdfClient;
   pages: PageInfo[];
   rev: number;
+  /** 쪽마다 따로 바뀐 횟수 (그 쪽만 다시 그리기) */
+  pageRev?: Record<number, number>;
   cur: number;
   sel: Set<number>;
   size: number;
@@ -21,7 +23,7 @@ interface Props {
 }
 
 /** 한눈에 보기: 모든 쪽을 바둑판으로 펼쳐 놓고 끌어서 순서를 바꾼다 */
-export function PageGrid({ client, pages, rev, cur, sel, size, onThumb, onOpenPage, onReorder, onInsertBlank, onContext }: Props) {
+export function PageGrid({ client, pages, rev, pageRev, cur, sel, size, onThumb, onOpenPage, onReorder, onInsertBlank, onContext }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const sort = useSortable({
     container: box, count: pages.length, selected: sel, layout: 'grid',
@@ -48,7 +50,7 @@ export function PageGrid({ client, pages, rev, cur, sel, size, onThumb, onOpenPa
               title="끌어서 순서 바꾸기 · 두 번 누르면 이 쪽 보기"
             >
               <span className="gpage" style={{ width: p.width * z, height: p.height * z }}>
-                <PageCanvas client={client} index={i} info={p} zoom={z} rev={rev} root={box.current} className="tbox" />
+                <PageCanvas client={client} index={i} info={p} zoom={z} rev={rev * 10000 + (pageRev?.[i] ?? 0)} root={box.current} className="tbox" thumb />
               </span>
               <span className="gnum">{i + 1}</span>
             </button>

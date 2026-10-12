@@ -63,6 +63,8 @@ export default function App() {
   const client = useMemo(() => new PdfClient(), []);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [rev, setRev] = useState(0);
+  // 쪽 하나만 바뀐 편집(글자 고치기, 넣기, 돌리기)은 그 쪽만 다시 그린다
+  const [pageRev, setPageRev] = useState<Record<number, number>>({});
   const [zoom, setZoom] = useState(1.25);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [cur, setCur] = useState(0);
@@ -107,6 +109,8 @@ export default function App() {
   const pendingAction = useRef<QuickAction | undefined>(undefined);
   const viewer = useRef<HTMLDivElement | null>(null);
   const [viewerEl, setViewerEl] = useState<HTMLDivElement | null>(null);
+  // ref 함수가 매번 바뀌면 React가 null→요소로 다시 붙이면서 모든 쪽을 다시 그리므로 한 번만 만든다
+  const viewerRef = useCallback((el: HTMLDivElement | null) => { viewer.current = el; if (el) setViewerEl(el); }, []);
   const lastClick = useRef<number | null>(null);
 
   useEffect(() => { loadFonts(); }, []);
@@ -197,7 +201,7 @@ export default function App() {
     const what = [kinds.has('sign') && '서명', kinds.has('stamp') && '직인', boxes.length && '글자', shapes.length && '그린 것'].filter(Boolean).join('·');
     setBusy('넣는 중…');
     try {
-      applyPages(await client.place(items, lines, marks), { kind: 'mark', page: (placed[0] ?? boxes[0] ?? shapes[0]).page });
+      applyPages(await client.place(items, lines, marks), { kind: 'mark', page: (placed[0] ?? boxes[0] ?? shapes[0]).page }, [...new Set([...placed, ...boxes, ...shapes].map((x) => x.page))]);
       setPlaced([]); setActivePlaced(null); setPlacing(null);
       setTexts([]); setActiveText(null); setAddingText(null);
       setShapes([]); setActiveShape(null);
@@ -320,17 +324,18 @@ export default function App() {
 
   const targets = useCallback((): number[] => (sel.size ? [...sel].sort((a, b) => a - b) : doc ? [cur] : []), [sel, cur, doc]);
 
-  const applyPages = useCallback((r: EditResult, item?: HistItem) => {
-    setDoc((d) => (d ? { ...d, pages: r.pages } : d));
+  const applyPages = useCallback((r: EditResult, item?: HistItem, only?: number[]) => {
+    if (r.pages) setDoc((d) => (d ? { ...d, pages: r.pages! } : d));
     setHist({ canUndo: r.canUndo, canRedo: r.canRedo });
-    setRev((v) => v + 1);
+    if (only) setPageRev((m) => { const n = { ...m }; for (const i of only) n[i] = (n[i] ?? 0) + 1; return n; });
+    else { setRev((v) => v + 1); setPageRev({}); }
     setDirty(true);
     if (item) setLog((l) => ({ done: [...l.done, item], undone: [] }));
   }, []);
 
   const replace = useCallback(async (req: ReplaceRequest, before: string, after: string) => {
     setBusy('글자 바꾸는 중…');
-    try { applyPages(await client.replace(req), { kind: 'text', page: req.page, before, after }); }
+    try { applyPages(await client.replace(req), { kind: 'text', page: req.page, before, after }, [req.page]); }
     catch (e) { say(`글자를 바꾸지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
   }, [client, applyPages, say]);
@@ -348,7 +353,7 @@ export default function App() {
 
   const rotate = useCallback(async (delta: number, idx?: number[]) => {
     const t = idx ?? targets();
-    if (t.length) applyPages(await client.rotate(t, delta), { kind: 'page', page: t[0] });
+    if (t.length) applyPages(await client.rotate(t, delta), { kind: 'page', page: t[0] }, t);
   }, [client, targets, applyPages]);
 
   const insertBlank = useCallback(async (at: number) => {
@@ -691,13 +696,13 @@ export default function App() {
       </div>
 
       <div className="work">
-        <PageRail client={client} pages={doc.pages} rev={rev} cur={cur} sel={sel} onThumb={onThumb} onReorder={reorder} onInsertFiles={insertFiles} {...pageActions} />
+        <PageRail client={client} pages={doc.pages} rev={rev} pageRev={pageRev} cur={cur} sel={sel} onThumb={onThumb} onReorder={reorder} onInsertFiles={insertFiles} {...pageActions} />
 
         <main className="stage">
           {overview && (
             <>
               <PageGrid
-                client={client} pages={doc.pages} rev={rev} cur={cur} sel={sel} size={gridSize}
+                client={client} pages={doc.pages} rev={rev} pageRev={pageRev} cur={cur} sel={sel} size={gridSize}
                 onThumb={(i, e) => { if (i < 0) { setSel(new Set()); return; } onThumb(i, e); }}
                 onOpenPage={(i) => { setOverview(false); requestAnimationFrame(() => goToRef.current(i)); }}
                 onReorder={reorder}
@@ -715,11 +720,11 @@ export default function App() {
               <PageMenu menu={gridMenu} onClose={() => setGridMenu(null)} actions={pageActions} />
             </>
           )}
-          <div className="viewer" hidden={overview} ref={(el) => { viewer.current = el; if (el !== viewerEl) setViewerEl(el); }}>
+          <div className="viewer" hidden={overview} ref={viewerRef}>
             <div className={`pages${mode === 'edit' ? ' editing' : ''}`}>
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
-                  <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev} root={viewerEl} className="sheet" />
+                  <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} root={viewerEl} className="sheet" />
                   {(drawKind || shapes.some((x) => x.page === i)) && (
                     <ShapeLayer
                       index={i} info={p} zoom={zoom}
@@ -775,7 +780,7 @@ export default function App() {
                   )}
                   {mode === 'edit' && (
                     <EditLayer
-                      client={client} index={i} info={p} zoom={zoom} rev={rev}
+                      client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)}
                       onReplace={(req) => replace(req, editing?.original ?? '', liveText)}
                       onMessage={say}
                       onEditing={(s) => { setEditing(s); setStyleOverride(null); if (!s) setLiveText(''); }}

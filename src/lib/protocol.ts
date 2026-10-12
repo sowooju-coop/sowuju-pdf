@@ -18,7 +18,7 @@ export type WorkerResponse =
 export interface RenderResult {
   width: number;
   height: number;
-  pixels: Uint8ClampedArray;
+  bitmap: ImageBitmap;
 }
 
 export interface TextChar {

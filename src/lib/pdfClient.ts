@@ -1,6 +1,7 @@
 import type { NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
-export interface EditResult { pages: PageInfo[]; canUndo: boolean; canRedo: boolean }
+/** pages 가 없으면 쪽 구성·크기는 그대로 */
+export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
 
 /** MuPDF 작업 스레드와 주고받는 얇은 창구. 요청마다 번호를 붙여 응답을 짝지어 준다. */
 export class PdfClient {
@@ -12,16 +13,26 @@ export class PdfClient {
    * 첫 요청은 이 신호를 기다렸다가 보낸다.
    */
   private ready: Promise<void>;
-  /** 작업 순서를 지키기 위한 대기열 (그리기 도중 페이지 삭제 등이 끼어들지 않게) */
-  private chain: Promise<unknown>;
+  private isReady = false;
+  /**
+   * 한 번에 하나씩 보내는 대기열. 편집·저장(우선순위 0)은 들어온 순서대로 먼저,
+   * 화면 그리기는 지금 보이는 쪽(1) → 근처 쪽(2) → 미리보기(3) 순서로, 같은 순위면 최근 요청부터.
+   * 스크롤로 지나간 쪽의 요청은 취소되어 아예 그리지 않는다.
+   */
+  private queue: { prio: number; n: number; signal?: AbortSignal; start: () => void; reject: (e: Error) => void }[] = [];
+  private running = false;
+  private n = 0;
 
   constructor() {
     let ok!: () => void, fail!: (e: Error) => void;
     this.ready = new Promise<void>((res, rej) => { ok = res; fail = rej; });
-    this.chain = this.ready;
-    this.worker.onerror = (e) => fail(new Error(e.message || 'PDF 엔진을 불러오지 못했어요'));
+    this.worker.onerror = (e) => {
+      const err = new Error(e.message || 'PDF 엔진을 불러오지 못했어요');
+      fail(err);
+      for (const t of this.queue.splice(0)) t.reject(err);
+    };
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      if (e.data.id === 0) { ok(); return; }
+      if (e.data.id === 0) { this.isReady = true; ok(); this.pump(); return; }
       const w = this.waiting.get(e.data.id);
       if (!w) return;
       this.waiting.delete(e.data.id);
@@ -30,17 +41,36 @@ export class PdfClient {
     };
   }
 
-  private call<T>(op: string, args?: unknown, transfer: Transferable[] = []): Promise<T> {
-    const run = () =>
-      new Promise<T>((resolve, reject) => {
+  private pump() {
+    if (this.running || !this.isReady) return;
+    // 취소된 그리기 요청은 버린다
+    this.queue = this.queue.filter((t) => {
+      if (t.signal?.aborted) { t.reject(new DOMException('취소됨', 'AbortError')); return false; }
+      return true;
+    });
+    if (!this.queue.length) return;
+    let best = 0;
+    for (let i = 1; i < this.queue.length; i++) {
+      const a = this.queue[i], b = this.queue[best];
+      if (a.prio < b.prio || (a.prio === b.prio && (a.prio === 0 ? a.n < b.n : a.n > b.n))) best = i;
+    }
+    const [t] = this.queue.splice(best, 1);
+    this.running = true;
+    t.start();
+  }
+
+  private call<T>(op: string, args?: unknown, transfer: Transferable[] = [], opts: { prio?: number; signal?: AbortSignal } = {}): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const start = () => {
         const id = ++this.seq;
-        this.waiting.set(id, { resolve, reject });
+        const done = () => { this.running = false; this.pump(); };
+        this.waiting.set(id, { resolve: (v) => { done(); resolve(v); }, reject: (e) => { done(); reject(e); } });
         this.worker.postMessage({ id, op, args } satisfies WorkerRequest, transfer);
-      });
-    const p = this.chain.then(run, run);
-    this.chain = p.catch(() => undefined);
-    // 엔진을 못 불러왔으면 기다리지 않고 바로 알린다
-    return Promise.race([p, this.ready.then(() => p)]);
+      };
+      this.queue.push({ prio: opts.prio ?? 0, n: ++this.n, signal: opts.signal, start, reject });
+      this.pump();
+      this.ready.catch(reject);
+    });
   }
 
   open(bytes: Uint8Array, password?: string) {
@@ -49,7 +79,8 @@ export class PdfClient {
   }
   newDoc() { return this.call<{ pages: PageInfo[] }>('newDoc'); }
   pages() { return this.call<PageInfo[]>('pages'); }
-  render(index: number, scale: number, rotate = 0) { return this.call<RenderResult>('render', { index, scale, rotate }); }
+  /** 화면 그리기. prio: 1 보이는 쪽, 2 근처 쪽, 3 미리보기. signal 로 취소 */
+  render(index: number, scale: number, opts: { prio?: number; signal?: AbortSignal } = {}) { return this.call<RenderResult>('render', { index, scale, rotate: 0 }, [], { prio: opts.prio ?? 1, signal: opts.signal }); }
   renderPng(index: number, scale: number, rotate = 0) { return this.call<Uint8Array>('renderPng', { index, scale, rotate }); }
   rotate(indices: number[], delta: number) { return this.call<EditResult>('rotate', { indices, delta }); }
   delete(indices: number[]) { return this.call<EditResult>('delete', { indices }); }
