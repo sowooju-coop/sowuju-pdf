@@ -1,12 +1,13 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { FormField, NewShape, NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { FormField, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
 import { listFields, setField } from './forms';
 import { clearFindCache, findText } from './find';
+import { addPageNumbers, addWatermark } from './pageStamp';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
@@ -258,6 +259,16 @@ const handlers: Record<string, (args: any) => any> = {
       await addTexts(requireDoc(), texts);
     });
     // 쪽 크기는 그대로라 쪽 정보를 다시 읽지 않는다 (쪽이 많을 때 빨라진다)
+    return { ...history() };
+  },
+  pageNumbers: async (o: PageNumberOptions) => {
+    await edit('쪽 번호', () => addPageNumbers(requireDoc(), o));
+    fontsAdded = true;
+    return { ...history() };
+  },
+  watermark: async (o: WatermarkOptions) => {
+    await edit('워터마크', () => addWatermark(requireDoc(), o));
+    fontsAdded = true;
     return { ...history() };
   },
   lines: ({ index }) => readLines(requireDoc(), index),

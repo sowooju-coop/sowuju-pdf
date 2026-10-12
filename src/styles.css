@@ -559,3 +559,28 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .selbar{position:absolute;z-index:5;display:flex;gap:2px;padding:4px;border-radius:10px;background:#0F1B2A;box-shadow:var(--shadow-2)}
 .selbar button{display:flex;align-items:center;gap:5px;height:30px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#fff;font:inherit;font-size:13px;cursor:pointer}
 .selbar button:hover{background:rgba(255,255,255,.14)}
+
+/* 쪽 번호·워터마크 */
+.pmgrid{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start}
+.pmform{display:grid;gap:12px}
+.pmrow{display:flex;align-items:center;gap:12px}
+.pmrow>span{width:64px;flex:none;font-size:13px;color:var(--ink2);font-weight:600}
+.pmpos{display:grid;grid-template-columns:repeat(3,34px);grid-template-rows:repeat(2,26px);gap:4px 4px;padding:6px;border-radius:8px;background:var(--soft)}
+.pmpos button{border:1.5px solid transparent;border-radius:5px;background:#fff;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.pmpos button i{width:10px;height:4px;border-radius:2px;background:#C3CBD4}
+.pmpos button.on{border-color:var(--navy,#1E3A5F)}
+.pmpos button.on i{background:var(--navy,#1E3A5F)}
+.pmnum{width:90px;height:32px;border:1px solid var(--line,#DDE3E9);border-radius:7px;padding:0 10px;font:inherit}
+.pmtext{flex:1;min-width:0;height:34px;border:1px solid var(--line,#DDE3E9);border-radius:7px;padding:0 10px;font:inherit;font-size:14px}
+.pmcheck{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink2)}
+.pmchips{display:flex;flex-wrap:wrap;gap:6px;margin-left:76px}
+.pmchips .chip{height:28px;padding:0 10px;border:1px solid var(--line,#DDE3E9);border-radius:14px;background:#fff;font:inherit;font-size:12.5px;cursor:pointer}
+.pmchips .chip.on{border-color:var(--navy,#1E3A5F);background:#EEF3F9;font-weight:700}
+.pmprev{display:grid;justify-items:center;gap:8px}
+.pmprev small{font-size:12px;color:var(--muted)}
+.pmsheet{position:relative;overflow:hidden;background:#fff;border:1px solid #DDE3E9;border-radius:3px;box-shadow:0 2px 8px rgba(15,27,42,.08);padding:18% 14% 0;display:flex;flex-direction:column;gap:6px}
+.pmsheet>i{display:block;height:4px;border-radius:2px;background:#E7EBEF}
+.pmsheet>i:nth-child(2n){width:80%}
+.pmlabel{position:absolute;color:#262626;line-height:1;white-space:nowrap}
+.pmwm{position:absolute;left:50%;top:50%;white-space:nowrap;line-height:1;transform-origin:center}
+.pmnote{font-size:12.5px!important}

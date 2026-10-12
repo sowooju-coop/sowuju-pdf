@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { FormField, OrigFontInfo, NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { FormField, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -97,6 +97,8 @@ export class PdfClient {
   place(items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[], texts: NewText[] = [], shapes: NewShape[] = []) {
     return this.call<EditResult>('place', { items, texts, shapes }, items.map((i) => i.png.buffer));
   }
+  pageNumbers(o: PageNumberOptions) { return this.call<EditResult>('pageNumbers', o); }
+  watermark(o: WatermarkOptions) { return this.call<EditResult>('watermark', o); }
   lines(index: number) { return this.call<TextLine[]>('lines', { index }); }
   replace(req: ReplaceRequest) { return this.call<EditResult>('replace', req); }
   undo() { return this.call<EditResult>('undo'); }

@@ -107,3 +107,31 @@ export interface FormField {
   maxLen: number;
   comb: boolean;
 }
+
+/** 쪽 번호 넣기 */
+export interface PageNumberOptions {
+  /** 위·아래(t/b) + 왼쪽·가운데·오른쪽(l/c/r) */
+  position: [ 't' | 'b', 'l' | 'c' | 'r'];
+  format: 'plain' | 'dash' | 'slash' | 'kor';
+  start: number;
+  skipFirst: boolean;
+  /** 짝수 쪽은 좌우를 바꿈 (양면 인쇄) */
+  mirror: boolean;
+  size: number;
+  margin: number;
+  color: [number, number, number];
+  fontFile: string;
+}
+
+/** 워터마크 넣기 */
+export interface WatermarkOptions {
+  text: string;
+  /** 0이면 쪽에 맞춰 자동 */
+  size: number;
+  diagonal: boolean;
+  opacity: number;
+  color: [number, number, number];
+  fontFile: string;
+  /** 없으면 모든 쪽 */
+  pages?: number[];
+}
