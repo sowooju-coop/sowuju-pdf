@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { Bookmark, CleanOptions, ReplaceParaRequest, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { Bookmark, CleanOptions, CropOptions, ReplaceParaRequest, ResizeOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replacePara, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
@@ -13,6 +13,7 @@ import { renderForOcr } from './ocrImage';
 import { createFields } from './formCreate';
 import { detectFields } from './formDetect';
 import { cleanPages, cleanPreview } from './scanClean';
+import { cropPages, resizePages } from './pageSize';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
@@ -336,6 +337,8 @@ const handlers: Record<string, (args: any) => any> = {
     await edit('스캔 깨끗하게', () => { angles = cleanPages(requireDoc(), pages, o); });
     return { ...history(), pages: pageInfos(), angles };
   },
+  resizePages: async (o: ResizeOptions) => { await edit('쪽 크기', () => resizePages(requireDoc(), o)); return { ...history(), pages: pageInfos() }; },
+  cropPages: async (o: CropOptions) => { await edit('여백 자르기', () => cropPages(requireDoc(), o)); return { ...history(), pages: pageInfos() }; },
   textless: () => textlessPages(requireDoc()),
   renderOcr: ({ index, scale }: { index: number; scale: number }) => renderForOcr(requireDoc(), index, scale),
   outline: () => getOutline(requireDoc()),

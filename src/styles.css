@@ -715,3 +715,24 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .editor.para{white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;box-sizing:border-box;transform:none}
 .minibar .mb-para{height:32px;padding:0 10px;border:0;border-radius:8px;background:var(--teal-tint,#E6F2F0);color:var(--teal,#0F766E);font-weight:700;font-size:13px}
 .minibar .mb-label{font-size:12px;font-weight:700;color:var(--teal,#0F766E);padding:0 8px}
+
+/* 쪽 크기·여백 자르기 */
+.seg.wide{flex-wrap:wrap}
+.seg.wide button{flex:1;min-width:64px;height:32px}
+.dlg.cropdlg{width:min(720px,100%)}
+.cropgrid{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:start}
+.cropform{display:grid;gap:12px}
+.cropbox{position:relative;background:#fff center/contain no-repeat;border:1px solid #DDE3E9;border-radius:3px;cursor:crosshair;touch-action:none;box-shadow:0 2px 8px rgba(15,27,42,.08)}
+.cropbox.off{cursor:default;opacity:.85}
+.cropsel{position:absolute;border:2px solid #0F766E;box-shadow:0 0 0 9999px rgba(15,27,42,.35);pointer-events:none}
+.crophint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:6px 10px;border-radius:6px;background:rgba(15,27,42,.75);color:#fff;font-size:12.5px;pointer-events:none;white-space:nowrap}
+/* 도구 막대가 넘칠 때: 메뉴 이름은 그대로, 도구 단추만 옆으로 넘긴다 (휠·오른쪽 끝 화살표) */
+.toolbar{position:relative;overflow:hidden}
+.toolbar .tools{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;padding-right:84px}
+.toolbar .tools::-webkit-scrollbar{display:none}
+.toolbar.more-r .tools{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 110px),transparent calc(100% - 70px));mask-image:linear-gradient(90deg,#000 calc(100% - 110px),transparent calc(100% - 70px))}
+.toolbar.more-l .tools{-webkit-mask-image:linear-gradient(90deg,transparent,#000 40px,#000 calc(100% - 70px),transparent calc(100% - 70px));mask-image:linear-gradient(90deg,transparent,#000 40px,#000 calc(100% - 70px),transparent calc(100% - 70px))}
+.toolbar.more-l.more-r .tools{-webkit-mask-image:linear-gradient(90deg,transparent,#000 40px,#000 calc(100% - 110px),transparent calc(100% - 70px));mask-image:linear-gradient(90deg,transparent,#000 40px,#000 calc(100% - 110px),transparent calc(100% - 70px))}
+.tbarrows{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--soft)}
+.tbarrows button{width:28px;height:30px;border:0;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--ink2);cursor:pointer;box-shadow:0 1px 2px rgba(15,27,42,.1)}
+.tbarrows button:disabled{opacity:.35;cursor:default;box-shadow:none;background:transparent}

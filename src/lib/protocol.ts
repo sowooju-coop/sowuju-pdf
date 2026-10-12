@@ -160,3 +160,8 @@ export interface ReplaceParaRequest {
   fontFile: string;
   origFont?: number;
 }
+
+/** 쪽 크기 바꾸기 (pt). orient: keep=원래 방향, portrait/landscape */
+export interface ResizeOptions { width: number; height: number; orient: 'keep' | 'portrait' | 'landscape'; pages: number[] }
+/** 여백 자르기: rect는 화면 좌표(pt, 위가 0). auto면 쪽마다 내용에 맞추고 margin(pt)만큼 남긴다 */
+export interface CropOptions { pages: number[]; rect?: [number, number, number, number]; auto?: boolean; margin: number; reset?: boolean }

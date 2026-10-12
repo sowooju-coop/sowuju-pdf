@@ -15,6 +15,7 @@ const PATHS: Record<string, string> = {
   batch: 'M5 4h10v4H5zM5 10h14v4H5zM5 16h7v4H5zM17 17l2 2 3-4',
   field: 'M3 7h18v10H3zM7 10v4M6 10h2M6 14h2',
   clean: 'M5 19l9-9M14 10l2-6 1 3 3 1-6 2zM4 8h2M5 7v2M18 15h2M19 14v2',
+  crop: 'M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14',
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   down: 'M12 5v14M6 13l6 6 6-6',
   edit: 'M4 7V5h10v2M9 5v11M7 16h4M13 20l6.5-6.5 2 2L15 22h-2z',

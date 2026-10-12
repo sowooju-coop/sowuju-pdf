@@ -19,6 +19,7 @@ import { OcrDialog, type OcrProgress } from './components/Ocr';
 import { recognize, stopOcr } from './lib/ocr';
 import { FieldLayer, FIELD_TYPES, type DraftField } from './components/FieldLayer';
 import type { NewFieldType } from './lib/protocol';
+import { CropDialog, ResizeDialog } from './components/PageSize';
 import { ScanCleanDialog } from './components/ScanClean';
 import type { CleanOptions } from './lib/protocol';
 import { RecipeDialog, type RecipeRun } from './components/Recipe';
@@ -178,6 +179,25 @@ export function Workspace(props: WorkspaceProps) {
   const [activeDraft, setActiveDraft] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [cleanOpen, setCleanOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState<'resize' | 'crop' | null>(null);
+  // 도구 막대가 화면보다 길면 양옆에 넘기기 표시 (마우스 휠로도 옆으로 넘어간다)
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [tbMore, setTbMore] = useState({ l: false, r: false });
+  const toolsEl = () => toolbarRef.current?.querySelector<HTMLElement>('.tools') ?? null;
+  const tbCheck = () => {
+    const t = toolsEl();
+    if (!t) return;
+    const l = t.scrollLeft > 4, r = t.scrollLeft + t.clientWidth < t.scrollWidth - 4;
+    setTbMore((m) => (m.l === l && m.r === r ? m : { l, r }));
+  };
+  useEffect(() => {
+    const t = toolsEl();
+    if (!t) return;
+    tbCheck();
+    const ro = new ResizeObserver(tbCheck);
+    ro.observe(t);
+    return () => ro.disconnect();
+  });
   // 왼쪽: 쪽 목록 / 목차
   const [side, setSide] = useState<'pages' | 'outline'>('pages');
   const [outlineCount, setOutlineCount] = useState(0);
@@ -1133,7 +1153,7 @@ export function Workspace(props: WorkspaceProps) {
         </div>
       </header>
 
-      <div className="toolbar" role="toolbar" aria-label="도구">
+      <div className={`toolbar${tbMore.l ? ' more-l' : ''}${tbMore.r ? ' more-r' : ''}`} role="toolbar" aria-label="도구" ref={toolbarRef} onScrollCapture={tbCheck} onWheel={(e) => { const t = toolsEl(); if (t && t.scrollWidth > t.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) t.scrollLeft += e.deltaY; }}>
         <div className="menutabs" role="tablist" aria-label="메뉴">
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => { setTab(t.id); if (t.id !== 'page') setOverview(false); }}>{t.label}</button>
@@ -1205,6 +1225,9 @@ export function Workspace(props: WorkspaceProps) {
             {tool('up', '앞으로', () => move(-1))}
             {tool('down', '뒤로', () => move(1))}
             <span className="vsep" aria-hidden="true" />
+            {tool('fit', '쪽 크기', () => setSizeOpen('resize'), { title: 'A4·A3 등 다른 용지 크기로 바꾸기' })}
+            {tool('crop', '여백 자르기', () => setSizeOpen('crop'), { title: '여백·테두리를 잘라 내용만 남기기' })}
+            <span className="vsep" aria-hidden="true" />
             {tool('hash', '쪽 번호', () => setMarkOpen('num'), { title: '모든 쪽에 쪽 번호 넣기' })}
             {tool('water', '워터마크', () => setMarkOpen('wm'), { title: '"사본", "대외비" 같은 글자를 쪽 가운데에 연하게 넣기' })}
             <span className="vsep" aria-hidden="true" />
@@ -1228,6 +1251,12 @@ export function Workspace(props: WorkspaceProps) {
             {tool('lock', encrypted ? '암호 걸기·풀기' : '암호 걸기', () => setLockOpen(true), { title: '열 때 암호를 묻는 파일로 저장' })}
             {tool('save', '용량 줄이기', () => setShrinkOpen(true), { title: '사진·스캔을 줄여 메일로 보내기 좋게' })}
           </div>
+        )}
+        {(tbMore.l || tbMore.r) && (
+          <span className="tbarrows">
+            <button aria-label="앞의 도구 보기" disabled={!tbMore.l} onClick={() => toolsEl()?.scrollBy({ left: -300, behavior: 'smooth' })}><Icon name="left" size={18} /></button>
+            <button aria-label="도구 더 보기" disabled={!tbMore.r} onClick={() => toolsEl()?.scrollBy({ left: 300, behavior: 'smooth' })}><Icon name="right" size={18} /></button>
+          </span>
         )}
       </div>
 
@@ -1586,6 +1615,16 @@ export function Workspace(props: WorkspaceProps) {
           </div>
         </div>
       )}
+      {sizeOpen === 'resize' && <ResizeDialog pages={doc.pages} current={cur} selected={[...sel].sort((a, b) => a - b)} onClose={() => setSizeOpen(null)} onRun={async (o) => {
+        setSizeOpen(null); await applyPlacedRef.current(); setBusy('쪽 크기 바꾸는 중…');
+        try { applyPages(await client.resizePages(o), { kind: 'page', page: o.pages[0] }); say(`${o.pages.length}쪽의 크기를 바꿨어요. 되돌리기로 원래대로 돌릴 수 있어요.`); requestAnimationFrame(() => fitWidthRef.current()); }
+        catch (e) { say(`쪽 크기를 바꾸지 못했어요. ${(e as Error).message}`); } finally { setBusy(null); }
+      }} />}
+      {sizeOpen === 'crop' && <CropDialog client={client} pages={doc.pages} current={cur} selected={[...sel].sort((a, b) => a - b)} onClose={() => setSizeOpen(null)} onRun={async (o) => {
+        setSizeOpen(null); await applyPlacedRef.current(); setBusy('여백 자르는 중…');
+        try { applyPages(await client.cropPages(o), { kind: 'page', page: o.pages[0] }); say(o.reset ? '자른 여백을 원래대로 돌렸어요.' : `${o.pages.length}쪽의 여백을 잘랐어요. 되돌리기나 '원래대로'로 돌릴 수 있어요.`); requestAnimationFrame(() => fitWidthRef.current()); }
+        catch (e) { say(`여백을 자르지 못했어요. ${(e as Error).message}`); } finally { setBusy(null); }
+      }} />}
       {cleanOpen && <ScanCleanDialog client={client} total={doc.pages.length} current={cur} textless={textless} onClose={() => setCleanOpen(false)} onRun={runClean} />}
       {recipeOpen && <RecipeDialog onClose={() => setRecipeOpen(false)} onRun={runRecipe} />}
       {compareWith && <CompareView client={client} pages={doc.pages} name={doc.name} other={compareWith} onClose={() => setCompareWith(null)} />}
