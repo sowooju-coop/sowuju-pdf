@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { Bookmark, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { Bookmark, CleanOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
@@ -12,6 +12,7 @@ import { addOcrText, textlessPages } from './ocrText';
 import { renderForOcr } from './ocrImage';
 import { createFields } from './formCreate';
 import { detectFields } from './formDetect';
+import { cleanPages, cleanPreview } from './scanClean';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
@@ -329,6 +330,12 @@ const handlers: Record<string, (args: any) => any> = {
     return { ...history() };
   },
   detectFields: ({ index }: { index: number }) => detectFields(requireDoc(), index),
+  cleanPreview: ({ index, o }: { index: number; o: CleanOptions }) => cleanPreview(requireDoc(), index, o),
+  cleanPages: async ({ pages, o }: { pages: number[]; o: CleanOptions }) => {
+    let angles: number[] = [];
+    await edit('스캔 깨끗하게', () => { angles = cleanPages(requireDoc(), pages, o); });
+    return { ...history(), pages: pageInfos(), angles };
+  },
   textless: () => textlessPages(requireDoc()),
   renderOcr: ({ index, scale }: { index: number; scale: number }) => renderForOcr(requireDoc(), index, scale),
   outline: () => getOutline(requireDoc()),

@@ -145,3 +145,6 @@ export interface Bookmark { title: string; page: number; y?: number; open: boole
 /** 새로 만들 입력칸. rect는 화면 좌표(pt, 위가 0) */
 export type NewFieldType = 'text' | 'multiline' | 'checkbox' | 'combo';
 export interface NewField { page: number; rect: [number, number, number, number]; type: NewFieldType; name: string; options?: string[] }
+
+/** 스캔 깨끗하게 */
+export interface CleanOptions { mode: 'bw' | 'gray' | 'color'; deskew: boolean; borders: boolean; whiten: boolean }

@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { Bookmark, FormField, NewField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { Bookmark, CleanOptions, FormField, NewField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -108,6 +108,8 @@ export class PdfClient {
   pageTitle(index: number) { return this.call<{ title: string; y: number } | null>('pageTitle', { index }); }
   /** 글자가 하나도 없는 쪽 (스캔한 쪽) */
   textless() { return this.call<number[]>('textless'); }
+  cleanPreview(index: number, o: CleanOptions) { return this.call<{ png: Uint8Array; angle: number }>('cleanPreview', { index, o }); }
+  cleanPages(pages: number[], o: CleanOptions) { return this.call<EditResult & { angles: number[] }>('cleanPages', { pages, o }); }
   detectFields(index: number) { return this.call<NewField[]>('detectFields', { index }); }
   createFields(fields: NewField[]) { return this.call<EditResult>('createFields', { fields }); }
   /** 글자 읽기용 그림 (흑백, 표 선 지움) */

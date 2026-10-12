@@ -19,6 +19,8 @@ import { OcrDialog, type OcrProgress } from './components/Ocr';
 import { recognize, stopOcr } from './lib/ocr';
 import { FieldLayer, FIELD_TYPES, type DraftField } from './components/FieldLayer';
 import type { NewFieldType } from './lib/protocol';
+import { ScanCleanDialog } from './components/ScanClean';
+import type { CleanOptions } from './lib/protocol';
 import { RecipeDialog, type RecipeRun } from './components/Recipe';
 import { CompareView } from './components/Compare';
 import { OutlinePanel } from './components/Outline';
@@ -175,6 +177,7 @@ export function Workspace(props: WorkspaceProps) {
   const [drafts, setDrafts] = useState<DraftField[]>([]);
   const [activeDraft, setActiveDraft] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
+  const [cleanOpen, setCleanOpen] = useState(false);
   // 왼쪽: 쪽 목록 / 목차
   const [side, setSide] = useState<'pages' | 'outline'>('pages');
   const [outlineCount, setOutlineCount] = useState(0);
@@ -724,6 +727,27 @@ export function Workspace(props: WorkspaceProps) {
     if (drafts.length && !window.confirm(`그려 둔 칸 ${drafts.length}개를 넣지 않고 끝낼까요?`)) return;
     setDrafts([]); setActiveDraft(null); setFieldTool(null);
   };
+  // 스캔 깨끗하게 (끝나면 글자 읽기까지)
+  const openClean = async () => {
+    await applyPlacedRef.current();
+    setScanHint(false);
+    setTextless(null);
+    client.textless().then(setTextless).catch(() => setTextless([]));
+    setCleanOpen(true);
+  };
+  const runClean = async (pages: number[], o: CleanOptions, ocr: boolean) => {
+    setCleanOpen(false);
+    setBusy(`스캔 깨끗하게 하는 중… (${pages.length}쪽)`);
+    try {
+      const r = await client.cleanPages(pages, o);
+      applyPages(r, { kind: 'page', page: pages[0] });
+      const fixed = r.angles.filter((a) => a).length;
+      setBusy(null);
+      if (ocr) { say(`${pages.length}쪽을 깨끗하게 했어요${fixed ? ` (${fixed}쪽 바로 세움)` : ''}. 이어서 글자를 읽어요.`); setOcrOpen(true); await runOcr(pages); }
+      else say(`${pages.length}쪽을 깨끗하게 했어요${fixed ? ` (${fixed}쪽 바로 세움)` : ''}. 되돌리기로 원래대로 돌릴 수 있어요.`);
+    } catch (e) { say(`깨끗하게 하지 못했어요. ${(e as Error).message}`); }
+    finally { setBusy(null); }
+  };
   /** 비교할 이전 판 PDF 고르기 */
   const startCompare = async () => {
     await applyPlacedRef.current();
@@ -1123,6 +1147,7 @@ export function Workspace(props: WorkspaceProps) {
             {tool('print', '인쇄', () => setPrintOpen(true))}
             {tool('image', '그림으로', () => setImgOpen(true), { title: '쪽을 JPG·PNG 그림 파일로 저장' })}
             {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
+            {tool('clean', '스캔 깨끗하게', () => openClean(), { title: '기울어진 스캔 바로 세우기, 회색 바탕 하얗게, 테두리 지우기' })}
             {tool('batch', '한 번에', () => setRecipeOpen(true), { title: '쪽 번호·워터마크·용량 줄이기·암호 등을 묶어서 한 번에 (여러 파일도)' })}
             {tool('compare', '비교', () => startCompare(), { title: '다른 PDF(이전 판)와 글자가 어디가 다른지 비교' })}
             <span className="vsep" aria-hidden="true" />
@@ -1159,6 +1184,7 @@ export function Workspace(props: WorkspaceProps) {
             </div>
             <span className="vsep" aria-hidden="true" />
             {tool('ocr', '글자 읽기', () => openOcr(), { title: '스캔·사진 문서의 글자를 읽어서 찾기·복사가 되게 하기' })}
+            {tool('clean', '스캔 깨끗하게', () => openClean(), { title: '기울어진 스캔 바로 세우기, 회색 바탕 하얗게, 테두리 지우기' })}
             {tool('field', '입력칸', () => startFields(), { on: !!fieldTool, title: '신청서에 글자칸·체크칸을 넣어 작성할 수 있는 PDF로 만들기' })}
             <span className="vsep" aria-hidden="true" />
             {tool('sign', '서명', () => setMarkDialog('sign'), { title: '서명 그리기·불러오기' })}
@@ -1351,6 +1377,7 @@ export function Workspace(props: WorkspaceProps) {
             <div className="scanhint" role="status">
               <span>스캔한 문서 같아요. <b>글자 읽기</b>를 하면 찾기·복사가 돼요.</span>
               <button className="ok" onClick={openOcr}>글자 읽기</button>
+              <button onClick={openClean}>깨끗하게</button>
               <button onClick={() => setScanHint(false)} aria-label="안내 닫기">닫기</button>
             </div>
           )}
@@ -1550,6 +1577,7 @@ export function Workspace(props: WorkspaceProps) {
           </div>
         </div>
       )}
+      {cleanOpen && <ScanCleanDialog client={client} total={doc.pages.length} current={cur} textless={textless} onClose={() => setCleanOpen(false)} onRun={runClean} />}
       {recipeOpen && <RecipeDialog onClose={() => setRecipeOpen(false)} onRun={runRecipe} />}
       {compareWith && <CompareView client={client} pages={doc.pages} name={doc.name} other={compareWith} onClose={() => setCompareWith(null)} />}
       {ocrOpen && (
