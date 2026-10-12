@@ -2,6 +2,7 @@
 import * as mupdf from 'mupdf';
 import type { NewText, TextLine, ReplaceRequest } from '../lib/protocol';
 import { addResource, appendContent, applyMatrix, num } from './pdfUtil';
+import { origByKey } from './origFont';
 
 /** 페이지의 글자를 줄 단위로, 글자마다 정확한 위치와 함께 읽는다 (좌표: 화면과 같은 페이지 공간, pt, 위가 0) */
 export function readLines(doc: mupdf.PDFDocument, index: number): TextLine[] {
@@ -75,9 +76,14 @@ function redact(page: mupdf.PDFPage, quads: mupdf.Quad[]) {
   page.applyRedactions(false, mupdf.PDFPage.REDACT_IMAGE_NONE, mupdf.PDFPage.REDACT_LINE_ART_NONE, mupdf.PDFPage.REDACT_TEXT_REMOVE);
 }
 
-/** 페이지 내용 끝에 글자를 쓰는 내용 스트림을 덧붙인다 */
-function appendText(doc: mupdf.PDFDocument, page: mupdf.PDFPage, fontRef: mupdf.PDFObject, font: mupdf.Font, req: ReplaceRequest) {
-  const key = addResource(doc, page, 'Font', 'SowujuF', fontRef);
+/**
+ * 페이지 내용 끝에 글자를 쓰는 내용 스트림을 덧붙인다.
+ * 원래 글꼴이 있으면 그 글꼴에 있는 글자는 원래 글꼴로, 없는 글자만 우리 글꼴로 쓴다 (한 줄 안에서 글꼴을 바꿔 가며).
+ */
+function appendText(doc: mupdf.PDFDocument, page: mupdf.PDFPage, fontRef: mupdf.PDFObject | null, font: mupdf.Font | null, req: ReplaceRequest) {
+  const key = fontRef ? addResource(doc, page, 'Font', 'SowujuF', fontRef) : '';
+  const orig = req.origFont ? origByKey(doc, req.origFont) : null;
+  const okey = orig ? sameResource(doc, page, req.origFont!) : null;
   // 화면 좌표(위가 0)를 PDF 좌표로 바꾸고, 원래 줄 방향 그대로 쓴다 (회전된 페이지 포함)
   const inv = mupdf.Matrix.invert(page.getTransform());
   const [ox, oy] = applyMatrix(inv, req.x, req.y);
@@ -85,20 +91,45 @@ function appendText(doc: mupdf.PDFDocument, page: mupdf.PDFPage, fontRef: mupdf.
   let ux = dx0 - ox, uy = dy0 - oy;
   const len = Math.hypot(ux, uy) || 1;
   ux /= len; uy /= len;
-  const hex = [...req.text].map((ch) => font.encodeCharacter(ch.codePointAt(0)!).toString(16).padStart(4, '0')).join('');
-  const [r, g, b] = req.color;
   const n = num;
+  // 같은 글꼴이 이어지는 글자끼리 묶는다
+  const runs: { k: string; hex: string }[] = [];
+  for (const ch of req.text) {
+    const cp = ch.codePointAt(0)!;
+    const cid = orig?.uni2cid.get(cp);
+    const useOrig = cid !== undefined && !!okey;
+    if (!useOrig && !font) continue;
+    const k = useOrig ? okey! : key;
+    const code = useOrig ? cid! : font!.encodeCharacter(cp);
+    const hex = code.toString(16).padStart(4, '0');
+    const last = runs[runs.length - 1];
+    if (last && last.k === k) last.hex += hex; else runs.push({ k, hex });
+  }
+  const [r, g, b] = req.color.map((v) => (Number.isFinite(v) ? v : 0));
+  const body = runs.map((x) => `/${x.k} ${n(req.size)} Tf <${x.hex}> Tj`).join(' ');
   appendContent(doc, page,
-    `q BT /${key} ${n(req.size)} Tf ${n(r)} ${n(g)} ${n(b)} rg ${n(req.spacing)} Tc ` +
-    `${n(ux)} ${n(uy)} ${n(-uy)} ${n(ux)} ${n(ox)} ${n(oy)} Tm <${hex}> Tj ET Q`);
+    `q BT ${n(r)} ${n(g)} ${n(b)} rg ${n(req.spacing)} Tc ` +
+    `${n(ux)} ${n(uy)} ${n(-uy)} ${n(ux)} ${n(ox)} ${n(oy)} Tm ${body} ET Q`);
+}
+
+/** 원래 글꼴 객체를 이 쪽의 Font 자원에 이름으로 올린다 (이미 있으면 그 이름) */
+function sameResource(doc: mupdf.PDFDocument, page: mupdf.PDFPage, objNum: number) {
+  const res = page.getObject().get('Resources');
+  const fonts = res.isNull() ? null : res.get('Font');
+  let name: string | null = null;
+  if (fonts && fonts.isDictionary()) fonts.forEach((v, k) => { if (!name && v.isIndirect() && v.asIndirect() === objNum) name = String(k); });
+  return name ?? addResource(doc, page, 'Font', 'SowujuO', doc.newIndirect(objNum));
 }
 
 export async function replaceText(doc: mupdf.PDFDocument, req: ReplaceRequest) {
   const page = doc.loadPage(req.page);
   redact(page, req.remove);
   if (req.text.trim()) {
-    const { ref, font } = await pdfFont(doc, req.fontFile);
-    appendText(doc, page, ref, font, req);
+    // 원래 글꼴로 모두 쓸 수 있으면 우리 글꼴은 아예 넣지 않는다 (파일이 커지지 않게)
+    const orig = req.origFont ? origByKey(doc, req.origFont) : null;
+    const allOrig = !!orig && [...req.text].every((ch) => orig.uni2cid.has(ch.codePointAt(0)!));
+    const fb = allOrig ? null : await pdfFont(doc, req.fontFile);
+    appendText(doc, page, fb?.ref ?? null, fb?.font ?? null, req);
   }
   page.destroy();
 }

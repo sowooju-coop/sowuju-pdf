@@ -3,8 +3,11 @@ import type { ReplaceRequest, TextChar, TextLine } from './protocol';
 import { fontFile, textWidth, type FontFamily } from './fonts';
 
 export interface EditStyle {
+  /** 원래 글꼴에 없는 글자를 쓸 비슷한 글꼴 */
   family: FontFamily;
   bold: boolean;
+  /** 원래 글꼴을 쓸 때: PDF 글꼴 번호와 브라우저 글꼴 이름 */
+  orig?: { key: number; css: string; ascent: number; descent: number };
 }
 
 const dot = (ax: number, ay: number, d: [number, number]) => ax * d[0] + ay * d[1];
@@ -24,7 +27,7 @@ function baseSpacing(line: TextLine, from: number, style: EditStyle, size: numbe
   const text = chars.map((c) => c.c).join('');
   if (!text) return 0;
   const actual = endOf(line, line.chars.length - 1, line.chars[from]);
-  const sp = (actual - textWidth(text, style.family, style.bold, size)) / [...text].length;
+  const sp = (actual - textWidth(text, style.family, style.bold, size, 0, style.orig?.css)) / [...text].length;
   return Math.max(-size * 0.12, Math.min(size * 0.2, sp));
 }
 
@@ -55,7 +58,7 @@ export function buildReplace(page: number, line: TextLine, i0: number, i1: numbe
   // 바뀐 글자가 원래 자리 폭에 자간 조정만으로 들어가면, 뒤쪽 원래 글자는 손대지 않는다
   if (mid && j1 >= j0) {
     const room = endOf(line, j1, line.chars[j0]);
-    const sp = (room - textWidth(mid, style.family, style.bold, size)) / [...mid].length;
+    const sp = (room - textWidth(mid, style.family, style.bold, size, 0, style.orig?.css)) / [...mid].length;
     if (sp >= -size * 0.12 && sp <= size * 0.2) { spacing = sp; fits = true; }
   }
   // 들어가지 않거나 글자를 지운 경우: 줄 끝까지 다시 써서 뒤 글자가 자연스럽게 밀리거나 당겨지게 한다
@@ -80,5 +83,6 @@ export function buildReplace(page: number, line: TextLine, i0: number, i1: numbe
     spacing: Math.round(spacing * 1000) / 1000,
     color,
     fontFile: fontFile(style.family, style.bold),
+    origFont: style.orig?.key,
   };
 }

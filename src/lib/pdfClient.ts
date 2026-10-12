@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { OrigFontInfo, NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -76,9 +76,10 @@ export class PdfClient {
 
   open(bytes: Uint8Array, password?: string) {
     const copy = bytes.slice();
+    this.docId++;
     return this.call<{ pages?: PageInfo[]; needsPassword?: boolean; wrongPassword?: boolean }>('open', { bytes: copy, password }, [copy.buffer]);
   }
-  newDoc() { return this.call<{ pages: PageInfo[] }>('newDoc'); }
+  newDoc() { this.docId++; return this.call<{ pages: PageInfo[] }>('newDoc'); }
   pages() { return this.call<PageInfo[]>('pages'); }
   /** 화면 그리기. prio: 1 보이는 쪽, 2 근처 쪽, 3 미리보기. signal 로 취소 */
   render(index: number, scale: number, opts: { prio?: number; signal?: AbortSignal } = {}) { return this.call<RenderResult>('render', { index, scale, rotate: 0 }, [], { prio: opts.prio ?? 1, signal: opts.signal }); }
@@ -101,6 +102,10 @@ export class PdfClient {
   undo() { return this.call<EditResult>('undo'); }
   redo() { return this.call<EditResult>('redo'); }
   save() { return this.call<Uint8Array>('save'); }
+
+  /** 문서를 새로 열 때마다 바뀌는 번호 (원래 글꼴 캐시 구분용) */
+  docId = 0;
+  origFont(index: number, name: string) { return this.call<OrigFontInfo | null>('origFont', { index, name }); }
 
   // 보호 메뉴
   findPrivate(rrnBackOnly: boolean, search: string[]) { return this.call<{ hits: PrivacyHit[]; noText: number[] }>('findPrivate', { rrnBackOnly, search }); }

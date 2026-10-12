@@ -4,6 +4,7 @@ import * as mupdf from 'mupdf';
 import type { NewShape, NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
+import { origFont } from './origFont';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
@@ -257,6 +258,11 @@ const handlers: Record<string, (args: any) => any> = {
     return { ...history() };
   },
   lines: ({ index }) => readLines(requireDoc(), index),
+  /** 고치는 줄의 원래 글꼴을 브라우저용으로 (쓸 수 없는 글꼴이면 null) */
+  origFont: ({ index, name }: { index: number; name: string }) => {
+    const e = origFont(requireDoc(), index, name);
+    return e ? { ...e.info, bytes: e.info.bytes.slice() } : null;
+  },
   replace: async (req: ReplaceRequest) => { await edit('글자 고치기', () => replaceText(requireDoc(), req)); if (req.text.trim()) fontsAdded = true; return { ...history() }; },
   undo: () => { const d = requireDoc(); if (d.canUndo()) d.undo(); return { pages: pageInfos(), ...history() }; },
   redo: () => { const d = requireDoc(); if (d.canRedo()) d.redo(); return { pages: pageInfos(), ...history() }; },

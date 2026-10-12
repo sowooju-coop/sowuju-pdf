@@ -906,13 +906,15 @@ export default function App() {
                 <div className="compare">
                   <span className="before">{editing.original}</span>
                   <Icon name="arrow" size={16} />
-                  <span className="after">{liveText || ' '}</span>
+                  <span className="after" style={curStyle.orig ? { fontFamily: `${curStyle.orig.css}, ${FONTS[curStyle.family].css}` } : undefined}>{liveText || ' '}</span>
                 </div>
               </section>
               <section>
                 <div className="h2row"><h2>원래 글자에 맞춘 모양</h2><span className="badge">자동</span></div>
                 <dl className="props">
-                  <dt>글꼴</dt><dd><b>{FONTS[curStyle.family].label}{curStyle.bold ? ' · 굵게' : ''}</b><small>원본 {editing.fontName || '알 수 없음'}</small></dd>
+                  <dt>글꼴</dt><dd>{curStyle.orig
+                    ? <><b>원래 글꼴 그대로</b><small>{editing.fontName || '문서 글꼴'} · 문서에 없던 글자만 {FONTS[curStyle.family].label}</small></>
+                    : <><b>{FONTS[curStyle.family].label}{curStyle.bold ? ' · 굵게' : ''}</b><small>원본 {editing.fontName || '알 수 없음'}</small></>}</dd>
                   <dt>크기</dt><dd>{Math.round(editing.size * 10) / 10}pt</dd>
                   <dt>자간</dt><dd>원래 폭에 맞춰 자동</dd>
                   <dt>색</dt><dd>원래 글자색</dd>

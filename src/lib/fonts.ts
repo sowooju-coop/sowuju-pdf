@@ -24,8 +24,8 @@ export function guessFamily(name: string, serifFlag: boolean, boldFlag: boolean)
 const ctx = document.createElement('canvas').getContext('2d')!;
 
 /** 글자 폭(pt). 자간 sp는 글자마다 뒤에 더해진다 (PDF의 Tc와 같은 규칙) */
-export function textWidth(text: string, family: FontFamily, bold: boolean, size: number, sp = 0) {
-  ctx.font = `${bold ? 700 : 400} ${size}px ${FONTS[family].css}`;
+export function textWidth(text: string, family: FontFamily, bold: boolean, size: number, sp = 0, origCss?: string) {
+  ctx.font = `${origCss ? 400 : bold ? 700 : 400} ${size}px ${origCss ? `${origCss}, ` : ''}${FONTS[family].css}`;
   return ctx.measureText(text).width + sp * [...text].length;
 }
 
@@ -44,4 +44,24 @@ export function baselineOffset(family: FontFamily, bold: boolean, size: number) 
   const m = ctx.measureText('가Ag');
   const asc = m.fontBoundingBoxAscent ?? size * 0.9, desc = m.fontBoundingBoxDescent ?? size * 0.25;
   return (LINE_HEIGHT * size - (asc + desc)) / 2 + asc;
+}
+
+/** 원래 글꼴을 브라우저에 올린다. 같은 문서·같은 글꼴은 한 번만 */
+const registered = new Map<string, Promise<string | null>>();
+export function registerOrigFont(docId: number, info: { key: number; bytes: Uint8Array }): Promise<string | null> {
+  const id = `${docId}:${info.key}`;
+  if (!registered.has(id)) {
+    const family = `SowujuOrig-${docId}-${info.key}`;
+    registered.set(id, (async () => {
+      try {
+        const face = new FontFace(family, info.bytes.slice().buffer as ArrayBuffer);
+        await face.load();
+        document.fonts.add(face);
+        return `"${family}"`;
+      } catch {
+        return null; // 브라우저가 받지 않는 글꼴: 비슷한 글꼴로 대신 쓴다
+      }
+    })());
+  }
+  return registered.get(id)!;
 }

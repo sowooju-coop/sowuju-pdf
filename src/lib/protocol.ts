@@ -54,6 +54,8 @@ export interface ReplaceRequest {
   spacing: number;
   color: [number, number, number];
   fontFile: string;
+  /** 원래 글꼴(PDF 글꼴 객체 번호)로 쓸 수 있는 글자는 그 글꼴로 쓴다 */
+  origFont?: number;
 }
 
 /** 새로 넣는 글자 한 줄 (x, y 는 글자 바닥선 왼쪽, 화면 좌표 pt) */
@@ -75,4 +77,14 @@ export interface NewShape {
   points: [number, number][];
   color: [number, number, number];
   width: number;
+}
+
+/** 원래 글꼴 정보 (브라우저 미리보기용 글꼴 포함) */
+export interface OrigFontInfo {
+  key: number;
+  bytes: Uint8Array;
+  chars: string;
+  ascent: number;
+  descent: number;
+  upm: number;
 }

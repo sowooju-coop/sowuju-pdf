@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PdfClient } from '../lib/pdfClient';
 import type { PageInfo, ReplaceRequest, TextLine } from '../lib/protocol';
-import { FONTS, guessFamily, type FontFamily } from '../lib/fonts';
+import { FONTS, guessFamily, registerOrigFont, type FontFamily } from '../lib/fonts';
 import { buildReplace, selectedText, type EditStyle } from '../lib/textDiff';
 
 interface Props {
@@ -28,7 +28,10 @@ export interface EditingState {
   fontName: string;
 }
 
-interface Sel { li: number; i0: number; i1: number; style: EditStyle }
+interface Sel { li: number; i0: number; i1: number; style: EditStyle; orig?: EditStyle['orig'] }
+
+/** 문서·글꼴 이름별로 찾아 둔 원래 글꼴 */
+const origCache = new Map<string, Promise<EditStyle['orig'] | undefined>>();
 
 const quadBox = (q: number[]) => {
   const xs = [q[0], q[2], q[4], q[6]], ys = [q[1], q[3], q[5], q[7]];
@@ -37,7 +40,8 @@ const quadBox = (q: number[]) => {
 
 /** 글꼴 기준선 위치 계산용 (line-height:1 일 때 위쪽에서 기준선까지 비율) */
 const metricCtx = document.createElement('canvas').getContext('2d')!;
-function baselineRatio(family: FontFamily) {
+function baselineRatio(family: FontFamily, orig?: EditStyle['orig']) {
+  if (orig) return (1 - (orig.ascent + orig.descent)) / 2 + orig.ascent;
   metricCtx.font = `400 100px ${FONTS[family].css}`;
   const m = metricCtx.measureText('가Hg');
   const A = (m.fontBoundingBoxAscent || 93) / 100, D = (m.fontBoundingBoxDescent || 24) / 100;
@@ -122,7 +126,20 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
     }
   };
 
-  const choose = (li: number, i0: number, i1: number) => {
+  /** 원래 글꼴을 브라우저에 올려 둔다 (PDF에 들어 있고 쓸 수 있는 글꼴일 때만) */
+  const findOrig = (fontName: string) => {
+    const id = `${client.docId}:${index}:${fontName}`;
+    if (!origCache.has(id)) {
+      origCache.set(id, client.origFont(index, fontName).then(async (info) => {
+        if (!info) return undefined;
+        const css = await registerOrigFont(client.docId, info);
+        return css ? { key: info.key, css, ascent: info.ascent / info.upm, descent: -info.descent / info.upm } : undefined;
+      }).catch(() => undefined));
+    }
+    return origCache.get(id)!;
+  };
+
+  const choose = async (li: number, i0: number, i1: number) => {
     const line = lines![li];
     while (i0 <= i1 && !line.chars[i0].c.trim()) i0++;
     while (i1 >= i0 && !line.chars[i1].c.trim()) i1--;
@@ -131,7 +148,9 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
     const g = guessFamily(ref.font, ref.serif, ref.bold);
     const boxes = line.chars.slice(i0, i1 + 1).map((c) => quadBox(c.quad));
     setBg(sampleBg({ x0: Math.min(...boxes.map((b) => b.x0)), y0: Math.min(...boxes.map((b) => b.y0)), x1: Math.max(...boxes.map((b) => b.x1)), y1: Math.max(...boxes.map((b) => b.y1)) }));
-    setSel({ li, i0, i1, style: { family: g.family, bold: g.bold } });
+    // 원래 글꼴을 쓸 수 있으면 처음부터 원래 글꼴로 보여 주고 쓴다
+    const orig = await findOrig(ref.font);
+    setSel({ li, i0, i1, style: { family: g.family, bold: g.bold, orig }, orig });
   };
 
   const onDown = (e: React.PointerEvent) => {
@@ -217,11 +236,11 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
           style={{
             left: start.x * zoom,
             top: start.y * zoom,
-            fontFamily: FONTS[style.family].css,
-            fontWeight: style.bold ? 700 : 400,
+            fontFamily: style.orig ? `${style.orig.css}, ${FONTS[style.family].css}` : FONTS[style.family].css,
+            fontWeight: !style.orig && style.bold ? 700 : 400,
             fontSize: start.size * zoom,
             color: `rgb(${start.color.map((v) => Math.round(v * 255)).join(',')})`,
-            transform: `rotate(${angle}deg) translateY(${-baselineRatio(style.family) * start.size * zoom}px)`,
+            transform: `rotate(${angle}deg) translateY(${-baselineRatio(style.family, style.orig) * start.size * zoom}px)`,
           }}
           onPointerDown={(e) => e.stopPropagation()}
           onInput={(e) => onText((e.currentTarget as HTMLElement).innerText)}
@@ -245,11 +264,14 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
           onMouseDown={(e) => e.preventDefault()}
         >
           <div className="seg" role="radiogroup" aria-label="글꼴">
+            {sel?.orig && (
+              <button role="radio" aria-checked={!!style.orig} className={style.orig ? 'on' : ''} style={{ fontFamily: `${sel.orig.css}, ${FONTS[style.family].css}` }} onClick={() => onStyle({ ...style, orig: sel.orig })} title="문서에 들어 있는 원래 글꼴. 문서에 없던 글자만 비슷한 글꼴로 써요">원래 글꼴</button>
+            )}
             {(Object.keys(FONTS) as FontFamily[]).map((f) => (
-              <button key={f} role="radio" aria-checked={style.family === f} className={style.family === f ? 'on' : ''} style={{ fontFamily: FONTS[f].css }} onClick={() => onStyle({ ...style, family: f })}>{FONTS[f].label}</button>
+              <button key={f} role="radio" aria-checked={!style.orig && style.family === f} className={!style.orig && style.family === f ? 'on' : ''} style={{ fontFamily: FONTS[f].css }} onClick={() => onStyle({ ...style, family: f, orig: undefined })}>{FONTS[f].label}</button>
             ))}
           </div>
-          <button className={`mb-b${style.bold ? ' on' : ''}`} aria-pressed={style.bold} aria-label="굵게" onClick={() => onStyle({ ...style, bold: !style.bold })}>B</button>
+          <button className={`mb-b${!style.orig && style.bold ? ' on' : ''}`} aria-pressed={!style.orig && style.bold} aria-label="굵게" disabled={!!style.orig} title={style.orig ? '원래 글꼴은 원래 굵기 그대로 써요' : undefined} onClick={() => onStyle({ ...style, bold: !style.bold })}>B</button>
           <span className="mb-sep" aria-hidden="true" />
           <button className="mb-ok" onClick={() => finish(true)}>적용<small>Enter</small></button>
           <button className="mb-no" onClick={() => finish(false)}>취소<small>Esc</small></button>
