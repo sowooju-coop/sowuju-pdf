@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { Bookmark, CleanOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
-import { addTexts, readLines, replaceText } from './textEdit';
+import type { Bookmark, CleanOptions, ReplaceParaRequest, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import { addTexts, readLines, replacePara, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
 import { listFields, setField } from './forms';
@@ -385,6 +385,7 @@ const handlers: Record<string, (args: any) => any> = {
     return e ? { ...e.info, bytes: e.info.bytes.slice() } : null;
   },
   replace: async (req: ReplaceRequest) => { await edit('글자 고치기', () => replaceText(requireDoc(), req)); if (req.text.trim()) fontsAdded = true; return { ...history() }; },
+  replacePara: async (req: ReplaceParaRequest) => { await edit('문단 고치기', () => replacePara(requireDoc(), req)); if (req.lines.some((l) => l.text.trim())) fontsAdded = true; return { ...history() }; },
   undo: () => { const d = requireDoc(); clearFindCache(d); if (d.canUndo()) d.undo(); return { pages: pageInfos(), ...history() }; },
   redo: () => { const d = requireDoc(); clearFindCache(d); if (d.canRedo()) d.redo(); return { pages: pageInfos(), ...history() }; },
   save: () => saveBytes('garbage,compress'),

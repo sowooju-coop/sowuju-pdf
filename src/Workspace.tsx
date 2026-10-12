@@ -1363,6 +1363,14 @@ export function Workspace(props: WorkspaceProps) {
                     <EditLayer
                       client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)}
                       onReplace={(req) => replace(req, editing?.original ?? '', liveText)}
+                      onReplacePara={async (req, before, after, grew) => {
+                        setBusy('문단 고치는 중…');
+                        try {
+                          applyPages(await client.replacePara(req), { kind: 'text', page: req.page, before, after }, [req.page]);
+                          if (grew > 0) say(`문단이 ${grew}줄 길어졌어요. 아래 글자와 겹치면 되돌리기(Ctrl+Z)로 돌리고 조금 줄여 주세요.`);
+                        } catch (e) { say(`문단을 고치지 못했어요. ${(e as Error).message}`); }
+                        finally { setBusy(null); }
+                      }}
                       onMessage={say}
                       onEditing={(s) => { setEditing(s); setStyleOverride(null); if (!s) setLiveText(''); }}
                       onText={setLiveText}

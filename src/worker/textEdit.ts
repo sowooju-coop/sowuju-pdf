@@ -1,7 +1,7 @@
 // 글자 읽기와 글자 바꾸기. 원래 글자는 redaction으로 파일에서 진짜로 지우고, 같은 자리에 새 글자를 쓴다.
 import * as mupdf from 'mupdf';
 import { isSerifName } from '../lib/fontClass';
-import type { NewText, TextLine, ReplaceRequest } from '../lib/protocol';
+import type { NewText, TextLine, ReplaceRequest, ReplaceParaRequest } from '../lib/protocol';
 import { addResource, appendContent, applyMatrix, num } from './pdfUtil';
 import { origByKey } from './origFont';
 
@@ -186,4 +186,23 @@ export async function addTexts(doc: mupdf.PDFDocument, items: NewText[]) {
     appendText(doc, page, ref, font, { ...it, remove: [], dir: [1, 0], spacing: 0 });
     page.destroy();
   }
+}
+
+/** 문단 고치기: 문단 글자를 한 번에 지우고 줄마다 다시 쓴다 */
+export async function replacePara(doc: mupdf.PDFDocument, req: ReplaceParaRequest) {
+  const page = doc.loadPage(req.page);
+  redact(page, req.remove);
+  const all = req.lines.map((l) => l.text).join('');
+  if (all.trim()) {
+    const orig = req.origFont ? origByKey(doc, req.origFont) : null;
+    const allOrig = !!orig && [...all].every((ch) => !ch.trim() || orig.uni2cid.has(ch.codePointAt(0)!));
+    const fb = allOrig ? null : await pdfFont(doc, req.fontFile);
+    for (const l of req.lines) {
+      appendText(doc, page, fb?.ref ?? null, fb?.font ?? null, {
+        page: req.page, remove: [], text: l.text, x: l.x, y: l.y, dir: req.dir, size: req.size,
+        spacing: l.spacing, color: req.color, fontFile: req.fontFile, origFont: req.origFont,
+      });
+    }
+  }
+  page.destroy();
 }

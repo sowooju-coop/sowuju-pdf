@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PdfClient } from '../lib/pdfClient';
-import type { PageInfo, ReplaceRequest, TextLine } from '../lib/protocol';
+import type { PageInfo, ReplaceParaRequest, ReplaceRequest, TextLine } from '../lib/protocol';
 import { FONTS, guessFamily, registerOrigFont, type FontFamily } from '../lib/fonts';
 import { buildReplace, selectedText, type EditStyle } from '../lib/textDiff';
+import { buildParaReplace, findParagraph, paraGeometry, paraText } from '../lib/paraEdit';
 
 interface Props {
   client: PdfClient;
@@ -11,6 +12,8 @@ interface Props {
   zoom: number;
   rev: number;
   onReplace: (req: ReplaceRequest) => void;
+  /** 여러 줄 문단 고치기 (before: 원래 글자, grew: 늘어난 줄 수) */
+  onReplacePara: (req: ReplaceParaRequest, before: string, after: string, grew: number) => void;
   onMessage: (m: string) => void;
   /** 고친 글자의 글꼴을 바꿀 수 있도록 바깥 막대에 알린다 */
   onEditing: (s: EditingState | null) => void;
@@ -49,11 +52,14 @@ function baselineRatio(family: FontFamily, orig?: EditStyle['orig']) {
 }
 
 /** 글자 수정 모드에서 페이지 위에 겹치는 층: 줄 표시, 고르기, 고치는 입력칸 */
-export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage, onEditing, onText, styleOverride, onStyle }: Props) {
+export function EditLayer({ client, index, info, zoom, rev, onReplace, onReplacePara, onMessage, onEditing, onText, styleOverride, onStyle }: Props) {
   const layer = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLSpanElement>(null);
   const [lines, setLines] = useState<TextLine[] | null>(null);
   const [sel, setSel] = useState<Sel | null>(null);
+  // 문단 고치기: 고른 줄들
+  const [para, setPara] = useState<{ lis: number[]; style: EditStyle; orig?: EditStyle['orig'] } | null>(null);
+  const paraEl = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [bg, setBg] = useState('#ffffff');
   const done = useRef(false);
@@ -71,18 +77,38 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
   useEffect(() => {
     if (!visible) return;
     let off = false;
-    setSel(null);
+    setSel(null); setPara(null);
     client.lines(index).then((l) => { if (!off) setLines(l); }).catch(() => setLines([]));
     return () => { off = true; };
   }, [client, index, rev, visible]);
 
-  const style = sel ? styleOverride ?? sel.style : null;
+  const style = sel ? styleOverride ?? sel.style : para ? styleOverride ?? para.style : null;
 
   useEffect(() => {
+    if (para && lines) {
+      const ref = lines[para.lis[0]].chars.find((c) => c.c.trim()) ?? lines[para.lis[0]].chars[0];
+      onEditing({ page: index, style: para.style, original: paraText(lines, para.lis), size: ref.size, fontName: ref.font.replace(/^[A-Z]{6}\+/, '').replace(/-\d{3,}$/, '') });
+      return;
+    }
     if (!sel || !lines) { onEditing(null); return; }
     const ref = lines[sel.li].chars[sel.i0];
     onEditing({ page: index, style: sel.style, original: selectedText(lines[sel.li], sel.i0, sel.i1), size: ref.size, fontName: ref.font.replace(/^[A-Z]{6}\+/, '').replace(/-\d{3,}$/, '') });
-  }, [sel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sel, para]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 문단 입력칸이 열리면 글자를 넣고 모두 고른다
+  useLayoutEffect(() => {
+    const el = paraEl.current;
+    if (!para || !el || !lines) return;
+    done.current = false;
+    el.textContent = paraText(lines, para.lis);
+    onText(el.textContent);
+    el.focus();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const s = getSelection()!;
+    s.removeAllRanges();
+    s.addRange(r);
+  }, [para?.lis.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 입력칸이 열리면 글자를 모두 고른 상태로 둔다
   useLayoutEffect(() => {
@@ -153,8 +179,20 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
     setSel({ li, i0, i1, style: { family: g.family, bold: g.bold, orig }, orig });
   };
 
+  /** 여러 줄을 문단으로 고치기 시작 */
+  const choosePara = async (lis: number[]) => {
+    const first = lines![lis[0]];
+    const ref = first.chars.find((c) => c.c.trim()) ?? first.chars[0];
+    const g = guessFamily(ref.font, ref.serif, ref.bold);
+    const boxes = lis.flatMap((li) => lines![li].chars.map((c) => quadBox(c.quad)));
+    setBg(sampleBg({ x0: Math.min(...boxes.map((b) => b.x0)), y0: Math.min(...boxes.map((b) => b.y0)), x1: Math.max(...boxes.map((b) => b.x1)), y1: Math.max(...boxes.map((b) => b.y1)) }));
+    const orig = await findOrig(ref.font);
+    setSel(null);
+    setPara({ lis, style: { family: g.family, bold: g.bold, orig }, orig });
+  };
+
   const onDown = (e: React.PointerEvent) => {
-    if (sel || !lines || e.button > 0) return;
+    if (sel || para || !lines || e.button > 0) return;
     const p = pt(e);
     layer.current!.setPointerCapture(e.pointerId);
     setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
@@ -178,6 +216,7 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
     }
     // 끌어서 고르기: 상자에 40% 이상 덮인 글자만 고른다
     let best = -1, bestCount = 0, bi0 = 0, bi1 = 0;
+    const touched: number[] = [];
     lines.forEach((l, li) => {
       const hit: number[] = [];
       l.chars.forEach((c, i) => {
@@ -186,8 +225,12 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
         const area = Math.max(0.01, (b.x1 - b.x0) * (b.y1 - b.y0));
         if ((ox * oy) / area >= 0.4) hit.push(i);
       });
+      if (hit.filter((i) => l.chars[i].c.trim()).length) touched.push(li);
       if (hit.length > bestCount) { best = li; bestCount = hit.length; bi0 = hit[0]; bi1 = hit[hit.length - 1]; }
     });
+    // 여러 줄(위아래로 다른 높이)을 끌었으면 문단으로 고친다
+    const rows = new Set(touched.map((li) => Math.round(lines[li].bbox[3])));
+    if (rows.size >= 2) { choosePara(touched.sort((a, b) => lines[a].bbox[1] - lines[b].bbox[1] || lines[a].bbox[0] - lines[b].bbox[0])); return; }
     if (best < 0) { onMessage('고를 글자가 없어요. 글자 위를 끌어 주세요.'); return; }
     choose(best, bi0, bi1);
   };
@@ -203,6 +246,21 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
     if (req) onReplace(req);
   };
 
+  const finishPara = (commit: boolean) => {
+    if (!para || done.current || !lines) return;
+    done.current = true;
+    const text = paraEl.current?.innerText ?? '';
+    const p = para;
+    setPara(null);
+    if (!commit) return;
+    const r = buildParaReplace(index, lines, p.lis, text, styleOverride ?? p.style);
+    if (r) onReplacePara(r.req, paraText(lines, p.lis), text, r.grew);
+  };
+  /** 지금 고르고 있는 줄의 문단 (2줄 이상일 때만) */
+  const paraOfSel = sel && lines ? findParagraph(lines, sel.li) : [];
+  const pg = para && lines ? paraGeometry(lines, para.lis) : null;
+  const pcover = para && lines ? para.lis.flatMap((li) => lines[li].chars.map((c) => quadBox(c.quad))) : [];
+
   const line = sel && lines ? lines[sel.li] : null;
   const start = line ? line.chars[sel!.i0] : null;
   const angle = line ? (Math.atan2(line.dir[1], line.dir[0]) * 180) / Math.PI : 0;
@@ -211,13 +269,13 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
   return (
     <div
       ref={layer}
-      className={`editlayer${sel ? ' editing' : ''}`}
+      className={`editlayer${sel || para ? ' editing' : ''}`}
       style={{ width: info.width * zoom, height: info.height * zoom }}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
     >
-      {!sel && lines?.map((l, i) => (
+      {!sel && !para && lines?.map((l, i) => (
         <div key={i} className="tline" style={{ left: l.bbox[0] * zoom, top: l.bbox[1] * zoom, width: (l.bbox[2] - l.bbox[0]) * zoom, height: (l.bbox[3] - l.bbox[1]) * zoom }} />
       ))}
       {drag && (
@@ -226,6 +284,62 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
       {cover.map((b, i) => (
         <div key={i} className="ecover" style={{ left: b.x0 * zoom - 1, top: b.y0 * zoom - 1, width: (b.x1 - b.x0) * zoom + 2, height: (b.y1 - b.y0) * zoom + 2, background: bg }} />
       ))}
+      {pcover.map((b, i) => (
+        <div key={`p${i}`} className="ecover" style={{ left: b.x0 * zoom - 1, top: b.y0 * zoom - 1, width: (b.x1 - b.x0) * zoom + 2, height: (b.y1 - b.y0) * zoom + 2, background: bg }} />
+      ))}
+      {pg && style && (
+        <div
+          ref={paraEl}
+          className="editor para"
+          contentEditable="plaintext-only"
+          suppressContentEditableWarning
+          spellCheck={false}
+          style={{
+            left: pg.left * zoom,
+            top: (pg.base - ((pg.pitch - pg.size) / 2 + baselineRatio(style.family, style.orig) * pg.size)) * zoom,
+            width: (pg.right - pg.left) * zoom + 2,
+            paddingLeft: Math.max(0, pg.rest - pg.left) * zoom,
+            textIndent: (pg.first - pg.rest) * zoom,
+            lineHeight: `${pg.pitch * zoom}px`,
+            textAlign: pg.justify ? 'justify' : 'left',
+            fontFamily: style.orig ? `${style.orig.css}, ${FONTS[style.family].css}` : FONTS[style.family].css,
+            fontWeight: !style.orig && style.bold ? 700 : 400,
+            fontSize: pg.size * zoom,
+            color: `rgb(${(lines![para!.lis[0]].chars.find((c) => c.c.trim()) ?? lines![para!.lis[0]].chars[0]).color.map((v) => Math.round(v * 255)).join(',')})`,
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onInput={(e) => onText((e.currentTarget as HTMLElement).innerText)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); finishPara(true); }
+            else if (e.key === 'Escape') { e.preventDefault(); finishPara(false); }
+          }}
+          onBlur={() => finishPara(true)}
+        />
+      )}
+      {pg && style && (
+        <div
+          className="minibar"
+          role="toolbar"
+          aria-label="고친 문단 모양"
+          style={{ left: pg.left * zoom, top: Math.max(4, (pg.base - pg.size * 1.1) * zoom - 50) }}
+          onPointerDown={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <span className="mb-label">문단 {para!.lis.length}줄</span>
+          <div className="seg" role="radiogroup" aria-label="글꼴">
+            {para?.orig && (
+              <button role="radio" aria-checked={!!style.orig} className={style.orig ? 'on' : ''} style={{ fontFamily: `${para.orig.css}, ${FONTS[style.family].css}` }} onClick={() => onStyle({ ...style, orig: para.orig })} title="문서에 들어 있는 원래 글꼴">원래 글꼴</button>
+            )}
+            {(Object.keys(FONTS) as FontFamily[]).map((f) => (
+              <button key={f} role="radio" aria-checked={!style.orig && style.family === f} className={!style.orig && style.family === f ? 'on' : ''} style={{ fontFamily: FONTS[f].css }} onClick={() => onStyle({ ...style, family: f, orig: undefined })}>{FONTS[f].label}</button>
+            ))}
+          </div>
+          <span className="mb-sep" aria-hidden="true" />
+          <button className="mb-ok" onClick={() => finishPara(true)}>적용<small>Ctrl+Enter</small></button>
+          <button className="mb-no" onClick={() => finishPara(false)}>취소<small>Esc</small></button>
+        </div>
+      )}
       {start && style && (
         <span
           ref={editor}
@@ -272,6 +386,9 @@ export function EditLayer({ client, index, info, zoom, rev, onReplace, onMessage
             ))}
           </div>
           <button className={`mb-b${!style.orig && style.bold ? ' on' : ''}`} aria-pressed={!style.orig && style.bold} aria-label="굵게" disabled={!!style.orig} title={style.orig ? '원래 글꼴은 원래 굵기 그대로 써요' : undefined} onClick={() => onStyle({ ...style, bold: !style.bold })}>B</button>
+          {paraOfSel.length >= 2 && (
+            <button className="mb-para" title="위아래로 이어진 줄을 함께 고치고 줄바꿈을 다시 맞춰요" onClick={() => { done.current = true; choosePara(paraOfSel); }}>문단 전체<small>{paraOfSel.length}줄</small></button>
+          )}
           <span className="mb-sep" aria-hidden="true" />
           <button className="mb-ok" onClick={() => finish(true)}>적용<small>Enter</small></button>
           <button className="mb-no" onClick={() => finish(false)}>취소<small>Esc</small></button>

@@ -148,3 +148,15 @@ export interface NewField { page: number; rect: [number, number, number, number]
 
 /** 스캔 깨끗하게 */
 export interface CleanOptions { mode: 'bw' | 'gray' | 'color'; deskew: boolean; borders: boolean; whiten: boolean }
+
+/** 문단 고치기: 문단의 글자를 모두 지우고 여러 줄로 다시 쓴다 (x, y는 줄마다 바닥선 왼쪽, 화면 좌표) */
+export interface ReplaceParaRequest {
+  page: number;
+  remove: TextChar['quad'][];
+  lines: { text: string; x: number; y: number; spacing: number }[];
+  dir: [number, number];
+  size: number;
+  color: [number, number, number];
+  fontFile: string;
+  origFont?: number;
+}
