@@ -1,8 +1,10 @@
 name: Release
-# v0.1.0 같은 태그를 올리면 Windows 설치 파일을 만들어 GitHub Releases에 올린다
+# v0.1.0 같은 태그를 올리거나 Actions 화면에서 직접 실행하면 Windows 설치 파일을 만들어 GitHub Releases에 올린다.
+# 직접 실행하면 package.json 의 버전(v0.1.0 등)으로 릴리스와 태그가 만들어진다.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
