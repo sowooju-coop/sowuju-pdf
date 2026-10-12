@@ -142,22 +142,39 @@ export const STAMP_STYLES: { id: StampStyle; label: string; hint: string }[] = [
 ];
 
 /** 도장 글꼴 (모두 OFL). weight 는 글꼴에 굵은 꼴이 있을 때만 */
-export const STAMP_FONTS: { id: string; label: string; css: string; weight: number }[] = [
-  { id: 'myeongjo', label: '명조', css: "'NanumMyeongjo'", weight: 700 },
-  { id: 'songmyung', label: '붓 명조', css: "'SongMyung'", weight: 400 },
-  { id: 'blackhan', label: '굵은 고딕', css: "'BlackHanSans'", weight: 400 },
-  { id: 'dohyeon', label: '인장체', css: "'DoHyeon'", weight: 400 },
+// 한글 글꼴에는 한자가 없어서, 한자는 명조 계열이면 본명조, 고딕 계열이면 본고딕(상용 한자 4,888자만 담은 것)으로 그린다
+const HANJA_SERIF = "'NotoHanjaSerif'", HANJA_SANS = "'NotoHanjaSans'";
+export const STAMP_FONTS: { id: string; label: string; css: string; weight: number; hanja: string }[] = [
+  { id: 'myeongjo', label: '명조', css: "'NanumMyeongjo'", weight: 700, hanja: HANJA_SERIF },
+  { id: 'songmyung', label: '붓 명조', css: "'SongMyung'", weight: 400, hanja: HANJA_SERIF },
+  { id: 'blackhan', label: '굵은 고딕', css: "'BlackHanSans'", weight: 400, hanja: HANJA_SANS },
+  { id: 'dohyeon', label: '인장체', css: "'DoHyeon'", weight: 400, hanja: HANJA_SANS },
 ];
 
 let stampFont = STAMP_FONTS[0];
 
 export async function loadStampFonts() {
-  await Promise.all(STAMP_FONTS.map((f) => document.fonts.load(`${f.weight} 40px ${f.css}`, '인감'))).catch(() => undefined);
+  await Promise.all([
+    ...STAMP_FONTS.map((f) => document.fonts.load(`${f.weight} 40px ${f.css}`, '인감')),
+    document.fonts.load(`700 40px ${HANJA_SERIF}`, '理'),
+    document.fonts.load(`700 40px ${HANJA_SANS}`, '理'),
+  ]).catch(() => undefined);
+}
+
+/** 가운데 글자로 자주 쓰는 직함 (한글, 한자) */
+export const STAMP_TITLES: [string, string][] = [
+  ['대표이사', '代表理事'], ['이사장', '理事長'], ['대표', '代表'], ['원장', '院長'], ['관장', '館長'], ['회장', '會長'],
+];
+
+/** 기관 이름에 맞는 기본 직함: 협동조합 등 조합은 이사장, 그 밖에는 대표이사 */
+export function titleFor(name: string, hanja: boolean) {
+  const t = STAMP_TITLES[/조합/.test(name) ? 1 : 0];
+  return hanja ? t[1] : t[0];
 }
 
 /** 칸에 맞춰 가로·세로를 따로 늘려 글자 하나를 그린다 (도장 글씨 느낌) */
 function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number, maxWide = 1.35) {
-  x.font = `${stampFont.weight} 100px ${stampFont.css}, serif`;
+  x.font = `${stampFont.weight} 100px ${stampFont.css}, ${stampFont.hanja}, serif`;
   x.textAlign = 'center';
   x.textBaseline = 'alphabetic';
   const m = x.measureText(chr);
@@ -178,7 +195,7 @@ function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: numb
 function fillGrid(x: CanvasRenderingContext2D, chars: string[], left: number, top: number, w: number, h: number, vertical: boolean) {
   const n = chars.length;
   if (!n) return;
-  const lines = n <= 2 ? (vertical ? n : 1) : n === 3 ? (vertical ? 2 : 3) : Math.ceil(Math.sqrt(n));
+  const lines = n <= 2 ? (vertical ? n : 1) : n === 3 ? (vertical ? 2 : 1) : Math.ceil(Math.sqrt(n));
   // 세 글자 세로는 오른쪽 줄에 성 한 글자, 왼쪽 줄에 이름 두 글자 (도장 관례)
   const per = vertical && n === 3 ? [1, 2] : Array.from({ length: lines }, (_, k) => Math.floor(n / lines) + (k < n % lines ? 1 : 0));
   let k = 0;

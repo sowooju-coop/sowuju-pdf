@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, loadStampFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_FONTS, STAMP_RED, STAMP_STYLES, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
+import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, loadStampFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_FONTS, STAMP_RED, STAMP_STYLES, STAMP_TITLES, titleFor, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
 
 interface Props {
   kind: MarkKind;
@@ -145,7 +145,16 @@ function DrawPad({ onReady }: { onReady: (c: HTMLCanvasElement | null) => void }
 function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: StampStyle) => void }) {
   const [style, setStyle] = useState<StampStyle>('corp');
   const [name, setName] = useState('소우주사회적협동조합');
-  const [inner, setInner] = useState('이사장');
+  const [hanja, setHanja] = useState(false);
+  const [inner, setInner] = useState(() => titleFor('소우주사회적협동조합', false));
+  // 가운데 글자를 직접 고르거나 쓰기 전에는 기관 이름에 맞춰 바꿔 준다 (조합은 이사장, 그 밖에는 대표이사)
+  const [autoInner, setAutoInner] = useState(true);
+  const changeName = (v: string) => { setName(v); if (autoInner) setInner(titleFor(v, hanja)); };
+  const changeScript = (hj: boolean) => {
+    setHanja(hj);
+    const t = STAMP_TITLES.find((p) => p.includes(inner));
+    if (t) setInner(hj ? t[1] : t[0]);
+  };
   const [font, setFont] = useState(STAMP_FONTS[0].id);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [fontsReady, setFontsReady] = useState(false);
@@ -168,15 +177,27 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
       <div className="stampfields">
         <div className="fieldcol">
           <label className="fieldlabel" htmlFor="stampname">{corp ? '테두리에 들어갈 기관 이름' : style === 'round' ? '도장에 들어갈 이름' : '직인에 들어갈 글자'}</label>
-          <input id="stampname" className="field" value={name} maxLength={24} onChange={(e) => setName(e.target.value)} placeholder={style === 'round' ? '예: 홍길동' : '예: 소우주사회적협동조합'} />
+          <input id="stampname" className="field" value={name} maxLength={24} onChange={(e) => changeName(e.target.value)} placeholder={style === 'round' ? '예: 홍길동' : '예: 소우주사회적협동조합'} />
         </div>
         {corp && (
           <div className="fieldcol narrow">
             <label className="fieldlabel" htmlFor="stampinner">가운데 글자</label>
-            <input id="stampinner" className="field" value={inner} maxLength={6} onChange={(e) => setInner(e.target.value)} placeholder="예: 대표이사" />
+            <input id="stampinner" className="field" value={inner} maxLength={6} onChange={(e) => { setInner(e.target.value); setAutoInner(false); }} placeholder="예: 대표이사" />
           </div>
         )}
       </div>
+      {corp && (
+        <div className="stampfonts" role="group" aria-label="가운데 글자 고르기">
+          <div className="seg" role="radiogroup" aria-label="한글 또는 한자">
+            <button role="radio" aria-checked={!hanja} className={hanja ? '' : 'on'} onClick={() => changeScript(false)}>한글</button>
+            <button role="radio" aria-checked={hanja} className={hanja ? 'on' : ''} onClick={() => changeScript(true)}>漢字</button>
+          </div>
+          {STAMP_TITLES.map((t) => {
+            const v = hanja ? t[1] : t[0];
+            return <button key={t[0]} className={`fontchip small${inner === v ? ' on' : ''}`} onClick={() => { setInner(v); setAutoInner(false); }}>{v}</button>;
+          })}
+        </div>
+      )}
       <div className="stampfonts" role="radiogroup" aria-label="도장 글씨체">
         <span className="fieldlabel">글씨체</span>
         {STAMP_FONTS.map((f) => (
