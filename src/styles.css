@@ -5,6 +5,9 @@
 @font-face{font-family:'NanumPenScript';src:url('/fonts/NanumPenScript-Regular.ttf') format('truetype');font-display:swap}
 @font-face{font-family:'NanumBrushScript';src:url('/fonts/NanumBrushScript-Regular.ttf') format('truetype');font-display:swap}
 @font-face{font-family:'Gaegu';src:url('/fonts/Gaegu-Regular.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'SongMyung';src:url('/fonts/SongMyung-Regular.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'BlackHanSans';src:url('/fonts/BlackHanSans-Regular.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'DoHyeon';src:url('/fonts/DoHyeon-Regular.ttf') format('truetype');font-display:swap}
 @font-face{font-family:'EastSeaDokdo';src:url('/fonts/EastSeaDokdo-Regular.ttf') format('truetype');font-display:swap}
 
 /* 디자인 규칙: 남색은 틀(로고·제목·저장), 청록은 "지금 누를 곳·선택된 것" 하나에만. 구분은 선보다 여백과 옅은 그림자로 */
@@ -362,6 +365,11 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .stampfields{display:flex;gap:12px;flex-wrap:wrap}
 .fieldcol{flex:1 1 260px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .fieldcol.narrow{flex:0 1 180px}
+.stampfonts{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.stampfonts .fieldlabel{margin-right:4px}
+.fontchip{height:34px;padding:0 14px;border:1px solid var(--line2);border-radius:999px;background:#fff;font-size:15px;color:var(--ink2);cursor:pointer}
+.fontchip:hover{border-color:var(--teal)}
+.fontchip.on{border-color:var(--teal);background:var(--teal-tint);color:var(--teal);box-shadow:0 0 0 1px var(--teal) inset}
 .stampgallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .stampcard{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 8px 12px;border:0;border-radius:var(--r-md);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line2);text-align:center}
 .stampcard:hover{box-shadow:inset 0 0 0 1px var(--teal)}

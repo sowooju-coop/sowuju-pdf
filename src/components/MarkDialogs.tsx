@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_RED, STAMP_STYLES, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
+import { cleanImage, drawStamp, drawTypedSign, fileToDataUrl, hasTransparency, loadImage, loadMarks, loadSignFonts, loadStampFonts, newId, removeMark, saveMark, SIGN_FONTS, STAMP_FONTS, STAMP_RED, STAMP_STYLES, trimCanvas, type CleanMode, type Mark, type MarkKind, type StampStyle } from '../lib/library';
 
 interface Props {
   kind: MarkKind;
@@ -146,21 +146,22 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
   const [style, setStyle] = useState<StampStyle>('corp');
   const [name, setName] = useState('소우주사회적협동조합');
   const [inner, setInner] = useState('이사장');
+  const [font, setFont] = useState(STAMP_FONTS[0].id);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [fontsReady, setFontsReady] = useState(false);
-  useEffect(() => { loadSignFonts().then(() => setFontsReady(true)); }, []);
+  useEffect(() => { loadStampFonts().then(() => setFontsReady(true)); }, []);
   useEffect(() => {
     if (!fontsReady) return;
     const out: Record<string, string> = {};
     let chosen: HTMLCanvasElement | null = null;
     for (const st of STAMP_STYLES) {
-      const c = drawStamp(st.id, name, inner, STAMP_RED, 400);
+      const c = drawStamp(st.id, name, inner, STAMP_RED, 400, font);
       out[st.id] = c.toDataURL('image/png');
-      if (st.id === style) chosen = drawStamp(st.id, name, inner, STAMP_RED, 800);
+      if (st.id === style) chosen = drawStamp(st.id, name, inner, STAMP_RED, 800, font);
     }
     setPreviews(out);
     onReady(name.trim() ? chosen : null, style);
-  }, [name, inner, style, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [name, inner, style, font, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
   const corp = style === 'corp' || style === 'corpFilled';
   return (
     <div className="makestamp2">
@@ -175,6 +176,12 @@ function MakeStamp({ onReady }: { onReady: (c: HTMLCanvasElement | null, style: 
             <input id="stampinner" className="field" value={inner} maxLength={6} onChange={(e) => setInner(e.target.value)} placeholder="예: 대표이사" />
           </div>
         )}
+      </div>
+      <div className="stampfonts" role="radiogroup" aria-label="도장 글씨체">
+        <span className="fieldlabel">글씨체</span>
+        {STAMP_FONTS.map((f) => (
+          <button key={f.id} role="radio" aria-checked={font === f.id} className={`fontchip${font === f.id ? ' on' : ''}`} style={{ fontFamily: f.css, fontWeight: f.weight }} onClick={() => setFont(f.id)}>{f.label}</button>
+        ))}
       </div>
       <div className="stampgallery" role="radiogroup" aria-label="도장 모양">
         {STAMP_STYLES.map((st) => (

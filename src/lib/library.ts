@@ -141,11 +141,23 @@ export const STAMP_STYLES: { id: StampStyle; label: string; hint: string }[] = [
   { id: 'round', label: '개인 도장', hint: '이름 두세 글자' },
 ];
 
-const STAMP_FONT = "'NanumMyeongjo', serif";
+/** 도장 글꼴 (모두 OFL). weight 는 글꼴에 굵은 꼴이 있을 때만 */
+export const STAMP_FONTS: { id: string; label: string; css: string; weight: number }[] = [
+  { id: 'myeongjo', label: '명조', css: "'NanumMyeongjo'", weight: 700 },
+  { id: 'songmyung', label: '붓 명조', css: "'SongMyung'", weight: 400 },
+  { id: 'blackhan', label: '굵은 고딕', css: "'BlackHanSans'", weight: 400 },
+  { id: 'dohyeon', label: '인장체', css: "'DoHyeon'", weight: 400 },
+];
+
+let stampFont = STAMP_FONTS[0];
+
+export async function loadStampFonts() {
+  await Promise.all(STAMP_FONTS.map((f) => document.fonts.load(`${f.weight} 40px ${f.css}`, '인감'))).catch(() => undefined);
+}
 
 /** 칸에 맞춰 가로·세로를 따로 늘려 글자 하나를 그린다 (도장 글씨 느낌) */
 function fillChar(x: CanvasRenderingContext2D, chr: string, cx: number, cy: number, cw: number, ch: number) {
-  x.font = `700 100px ${STAMP_FONT}`;
+  x.font = `${stampFont.weight} 100px ${stampFont.css}, serif`;
   x.textAlign = 'center';
   x.textBaseline = 'alphabetic';
   const m = x.measureText(chr);
@@ -215,7 +227,8 @@ function star(x: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
  * corp: 법인 원형 인감(테두리에 기관 이름, 가운데 원에 직함), corpFilled: 같은 모양의 빨간 채움형,
  * square: 네모 직인(오른쪽 줄부터 세로), round: 개인 도장(동그라미).
  */
-export function drawStamp(style: StampStyle, name: string, inner = '', color = STAMP_RED, size = 640): HTMLCanvasElement {
+export function drawStamp(style: StampStyle, name: string, inner = '', color = STAMP_RED, size = 640, font = STAMP_FONTS[0].id): HTMLCanvasElement {
+  stampFont = STAMP_FONTS.find((f) => f.id === font) ?? STAMP_FONTS[0];
   const chars = [...name.replace(/\s+/g, '')];
   const innerChars = [...inner.replace(/\s+/g, '')];
   const c = document.createElement('canvas');
