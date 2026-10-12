@@ -6,6 +6,7 @@ import { addTexts, readLines, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
 import { listFields, setField } from './forms';
+import { clearFindCache, findText } from './find';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
@@ -21,6 +22,7 @@ function startJournal(d: mupdf.PDFDocument) {
 async function edit<T>(name: string, fn: () => T | Promise<T>): Promise<T> {
   const d = requireDoc();
   d.beginOperation(name);
+  clearFindCache(d);
   try {
     const r = await fn();
     d.endOperation();
@@ -269,6 +271,7 @@ const handlers: Record<string, (args: any) => any> = {
     return n;
   },
   fields: ({ index }: { index: number }): FormField[] => listFields(requireDoc(), index),
+  find: ({ query }: { query: string }) => findText(requireDoc(), query),
   setField: async ({ index, id, value }: { index: number; id: number; value: string }) => {
     const usedFont = await edit('입력칸 채우기', () => setField(requireDoc(), index, id, value));
     if (usedFont) fontsAdded = true;
@@ -280,8 +283,8 @@ const handlers: Record<string, (args: any) => any> = {
     return e ? { ...e.info, bytes: e.info.bytes.slice() } : null;
   },
   replace: async (req: ReplaceRequest) => { await edit('글자 고치기', () => replaceText(requireDoc(), req)); if (req.text.trim()) fontsAdded = true; return { ...history() }; },
-  undo: () => { const d = requireDoc(); if (d.canUndo()) d.undo(); return { pages: pageInfos(), ...history() }; },
-  redo: () => { const d = requireDoc(); if (d.canRedo()) d.redo(); return { pages: pageInfos(), ...history() }; },
+  undo: () => { const d = requireDoc(); clearFindCache(d); if (d.canUndo()) d.undo(); return { pages: pageInfos(), ...history() }; },
+  redo: () => { const d = requireDoc(); clearFindCache(d); if (d.canRedo()) d.redo(); return { pages: pageInfos(), ...history() }; },
   save: () => saveBytes('garbage,compress'),
   /** 암호를 걸어 저장한 파일 (작업 중인 문서는 그대로) */
   saveProtected: ({ password, printOnly }: { password: string; printOnly: boolean }) => saveBytes(`garbage,compress,${password ? encryptOptions(password, printOnly) : 'encrypt=none'}`),

@@ -12,6 +12,7 @@ import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
 import { NOTE_COLOR, NOTE_PAD, TextLayer, type TextBox } from './components/TextLayer';
 import { FormLayer } from './components/FormLayer';
+import { FindBar, FindLayer, type FindState } from './components/Find';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
 import type { ShapeKind } from './lib/protocol';
@@ -139,6 +140,8 @@ export function Workspace(props: WorkspaceProps) {
   // 펜·형광펜·도형: 놓아 둔 것, 고른 것, 지금 쓰는 도구와 색
   // 보호: 개인정보 지우기 상태, 암호·용량 대화상자, 처음 열 때 암호가 있었는지
   const [privacy, setPrivacy] = useState<PrivacyState | null>(null);
+  // 문서 안 글자 찾기 (Ctrl+F)
+  const [find, setFind] = useState<FindState>({ q: '', hits: [], idx: 0, busy: false, open: false });
   // 양식 입력칸이 있는 문서면 그 개수 (0이면 입력칸 층을 그리지 않는다)
   const [fieldCount, setFieldCount] = useState(0);
   const [lockOpen, setLockOpen] = useState(false);
@@ -627,6 +630,45 @@ export function Workspace(props: WorkspaceProps) {
     if (viewer.current) viewer.current.scrollTop = els[n].offsetTop - 24;
     setCur(n);
   }, []);
+  // 찾기: 글자를 바꾸거나 문서가 바뀌면 다시 찾는다
+  const findSeq = useRef(0);
+  useEffect(() => {
+    if (!find.open || !doc) return;
+    const q = find.q.trim();
+    const seq = ++findSeq.current;
+    if (!q) { setFind((f) => ({ ...f, hits: [], idx: 0, busy: false })); return; }
+    setFind((f) => ({ ...f, busy: true }));
+    const t = setTimeout(async () => {
+      try {
+        const hits = await client.find(q);
+        if (seq !== findSeq.current) return;
+        setFind((f) => {
+          // 같은 쪽 근처의 첫 결과부터 보여 준다
+          const start = Math.max(0, hits.findIndex((h) => h.page >= cur));
+          return { ...f, hits, idx: f.q.trim() === q && f.hits.length ? Math.min(f.idx, Math.max(0, hits.length - 1)) : start, busy: false };
+        });
+      } catch { if (seq === findSeq.current) setFind((f) => ({ ...f, hits: [], busy: false })); }
+    }, 180);
+    return () => clearTimeout(t);
+  }, [find.q, find.open, doc, hist, client]); // eslint-disable-line react-hooks/exhaustive-deps
+  const findCur = find.open && find.hits.length ? find.hits[find.idx] ?? null : null;
+  // 지금 찾은 자리가 화면 가운데 오도록
+  useEffect(() => {
+    const v = viewer.current;
+    if (!findCur || !v) return;
+    const el = v.querySelectorAll<HTMLElement>('.page')[findCur.page];
+    if (!el) return;
+    const y = el.offsetTop + findCur.rect[1] * zoom, x = el.offsetLeft + findCur.rect[0] * zoom;
+    if (y < v.scrollTop + 40 || y > v.scrollTop + v.clientHeight - 60) v.scrollTop = y - v.clientHeight * 0.35;
+    if (x < v.scrollLeft || x > v.scrollLeft + v.clientWidth - 40) v.scrollLeft = x - v.clientWidth * 0.3;
+  }, [findCur, zoom]);
+  const moveFind = (d: 1 | -1) => setFind((f) => (f.hits.length ? { ...f, idx: (f.idx + d + f.hits.length) % f.hits.length } : f));
+  const openFind = () => {
+    if (!doc) return;
+    const picked = window.getSelection()?.toString().trim();
+    setFind((f) => ({ ...f, open: true, q: picked && picked.length < 60 && !picked.includes('\n') ? picked : f.q }));
+  };
+
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const fitWidthRef = useRef(() => {});
@@ -659,6 +701,8 @@ export function Workspace(props: WorkspaceProps) {
       if (mod && k === 'o') { e.preventDefault(); doOpen(); }
       else if (mod && k === 's') { e.preventDefault(); doSave(); }
       else if (mod && k === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
+      else if (mod && k === 'f') { e.preventDefault(); if (doc && !document.querySelector('.modal')) { setOverview(false); openFind(); } }
+      else if (e.key === 'F3' && find.open) { e.preventDefault(); moveFind(e.shiftKey ? -1 : 1); }
       else if ((e.target as HTMLElement).isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName) || document.querySelector('.modal')) return;
       else if (e.key === 'Escape' && addingText) { e.preventDefault(); setAddingText(null); }
       else if (e.key === 'Escape' && privacy?.drawing) { e.preventDefault(); setPrivacy({ ...privacy, drawing: false }); }
@@ -700,7 +744,7 @@ export function Workspace(props: WorkspaceProps) {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length, privacy, active]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length, privacy, active, find.open]);
 
   // 탐색기에서 PDF를 두 번 눌러 열거나, 이미 켜진 창에 파일을 보낼 때
   const loadRef = useRef(load);
@@ -767,6 +811,7 @@ export function Workspace(props: WorkspaceProps) {
         <Logo size={24} />
         <TabStrip tabs={props.tabs} activeId={tabId} onSelect={props.onSelectTab} onClose={(id) => (id === tabId ? requestClose() : props.onCloseTab(id))} onNew={props.onNewTab} />
         <div className="topright">
+          <button className="iconbtn" aria-label="문서에서 찾기" title="문서에서 찾기 (Ctrl+F)" onClick={() => { setOverview(false); openFind(); }}><Icon name="search" size={19} /></button>
           <button className="iconbtn" aria-label="실행 취소" title="실행 취소 (Ctrl+Z)" onClick={undo} disabled={!hist.canUndo}><Icon name="undo" size={19} /></button>
           <button className="iconbtn" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z)" onClick={redo} disabled={!hist.canRedo}><Icon name="redo" size={19} /></button>
           <span className="vsep" aria-hidden="true" />
@@ -894,6 +939,9 @@ export function Workspace(props: WorkspaceProps) {
                   {fieldCount > 0 && mode !== 'edit' && !privacy && (
                     <FormLayer client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} onSet={setField} />
                   )}
+                  {find.open && find.hits.some((h) => h.page === i) && (
+                    <FindLayer info={p} zoom={zoom} hits={find.hits.filter((h) => h.page === i)} current={findCur?.page === i ? findCur : null} />
+                  )}
                   {privacy && (
                     <RedactLayer
                       index={i} info={p} zoom={zoom} state={privacy}
@@ -970,6 +1018,9 @@ export function Workspace(props: WorkspaceProps) {
               ))}
             </div>
           </div>
+          {find.open && !overview && (
+            <FindBar state={find} onQuery={(q) => setFind((f) => ({ ...f, q }))} onMove={moveFind} onClose={() => setFind((f) => ({ ...f, open: false }))} />
+          )}
           {drawKind && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />

@@ -107,6 +107,9 @@ export class PdfClient {
   docId = 0;
   origFont(index: number, name: string) { return this.call<OrigFontInfo | null>('origFont', { index, name }); }
 
+  /** 문서 안 글자 찾기 (띄어쓰기·대소문자 무시) */
+  find(query: string) { return this.call<{ page: number; rect: [number, number, number, number]; text: string }[]>('find', { query }); }
+
   // 양식 입력칸
   fieldCount() { return this.call<number>('fieldCount'); }
   fields(index: number) { return this.call<FormField[]>('fields', { index }); }

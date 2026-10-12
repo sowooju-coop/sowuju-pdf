@@ -542,3 +542,13 @@ kbd{display:inline-block;padding:3px 8px;border-radius:6px;border:1px solid var(
 .welcome .grow{flex:1}
 .welnote{margin:0;text-align:center}
 .helpbtn{width:auto!important;padding:0 10px;gap:6px;display:inline-flex;align-items:center;font-size:13.5px}.startright{display:flex;gap:8px;align-items:center}.pill .ico{margin-right:2px}
+
+/* 문서 안 글자 찾기 */
+.findbar{position:absolute;top:12px;right:22px;z-index:6;display:flex;align-items:center;gap:4px;height:42px;padding:0 6px 0 12px;border-radius:12px;background:#fff;box-shadow:var(--shadow-2);color:var(--muted,#6b7280)}
+.findbar input{width:210px;border:0;outline:0;font:inherit;font-size:14.5px;color:var(--ink,#111827);background:transparent;padding:6px 4px}
+.findbar .fcount{min-width:56px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted,#6b7280);margin-right:4px}
+.findbar .fcount.none{color:#C8102E}
+.findbar .iconbtn{width:30px;height:30px}
+.findlayer{position:absolute;left:0;top:0;z-index:3;pointer-events:none}
+.fhit{position:absolute;background:rgba(250,204,21,.38);border-radius:2px;mix-blend-mode:multiply}
+.fhit.cur{background:rgba(249,115,22,.5);outline:2px solid #F97316}
