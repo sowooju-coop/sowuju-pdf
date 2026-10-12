@@ -418,3 +418,22 @@ body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
 .dropmenu{position:absolute;top:calc(100% + 6px);left:0;z-index:30;display:flex;flex-direction:column;min-width:170px;padding:6px;border-radius:var(--r-md);background:#fff;box-shadow:0 0 0 1px rgba(15,27,42,.06),0 12px 30px rgba(15,27,42,.18)}
 .dropmenu button{height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;font-size:14px;color:var(--ink)}
 .dropmenu button:hover{background:var(--soft)}
+
+/* 펜·형광펜·도형 */
+.shapelayer{position:absolute;left:0;top:0;z-index:3;pointer-events:none;mix-blend-mode:multiply}
+.minibar.shapebar{z-index:6}
+.shapelayer svg{position:absolute;left:0;top:0;overflow:visible}
+.shapelayer.drawing{z-index:5}
+.shapelayer.drawing svg{pointer-events:auto;cursor:crosshair;touch-action:none}
+.shapelayer .shp.pickable{pointer-events:auto;cursor:pointer}
+.shapelayer .shp .hit{fill:none;stroke:transparent;pointer-events:stroke}
+.shapelayer .shp.pickable:hover path:not(.hit):not(.sel){filter:drop-shadow(0 0 2px rgba(15,118,110,.6))}
+.shapelayer .shp .sel{fill:none;stroke:var(--teal);stroke-width:1.2;stroke-dasharray:4 3;pointer-events:none}
+.shapelayer .minibar{pointer-events:auto}
+.drawopts{display:inline-flex;align-items:center;gap:2px;margin-left:6px}
+.drawopts .mb-color{width:26px;height:28px;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;border-radius:7px}
+.drawopts .mb-color span{width:15px;height:15px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+.drawopts .mb-color.on span{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--teal)}
+.drawopts .wbtn{height:28px;padding:0 8px;border:0;border-radius:7px;background:transparent;font-size:12.5px;color:var(--muted)}
+.drawopts .wbtn.on{background:var(--teal-tint);color:var(--teal);font-weight:700}
+.dropmenu .dm-ico{display:inline-block;width:22px;color:var(--teal);font-weight:700}

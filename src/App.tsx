@@ -11,6 +11,8 @@ import { PageMenu, type PageActions, type PageMenuState } from './components/Pag
 import { MarkDialog } from './components/MarkDialogs';
 import { PlaceLayer, type Placed } from './components/PlaceLayer';
 import { TextLayer, type TextBox } from './components/TextLayer';
+import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
+import type { ShapeKind } from './lib/protocol';
 import { dataUrlBytes, newId, type Mark, type MarkKind } from './lib/library';
 import { EditLayer, type EditingState } from './components/EditLayer';
 import { PageCanvas } from './components/PageCanvas';
@@ -48,6 +50,15 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'home', label: '홈' }, { id: 'edit', label: '편집' }, { id: 'page', label: '페이지' }, { id: 'note', label: '주석' }, { id: 'protect', label: '보호' },
 ];
 
+const SHAPE_KINDS: { id: ShapeKind; label: string; icon: string }[] = [
+  { id: 'check', label: '체크 표시', icon: '✓' },
+  { id: 'rect', label: '네모', icon: '□' },
+  { id: 'ellipse', label: '동그라미', icon: '○' },
+  { id: 'line', label: '선', icon: '─' },
+  { id: 'arrow', label: '화살표', icon: '→' },
+];
+const DRAW_LABEL: Record<ShapeKind, string> = { pen: '펜', highlight: '형광펜', check: '체크 표시', rect: '네모', ellipse: '동그라미', line: '선', arrow: '화살표' };
+
 export default function App() {
   const client = useMemo(() => new PdfClient(), []);
   const [doc, setDoc] = useState<Doc | null>(null);
@@ -75,6 +86,15 @@ export default function App() {
   const [addingText, setAddingText] = useState<{ text: string } | null>(null);
   const [activeText, setActiveText] = useState<string | null>(null);
   const [dateMenu, setDateMenu] = useState(false);
+  // 펜·형광펜·도형: 놓아 둔 것, 고른 것, 지금 쓰는 도구와 색
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [activeShape, setActiveShape] = useState<string | null>(null);
+  const [drawKind, setDrawKind] = useState<ShapeKind | null>(null);
+  const [shapeMenu, setShapeMenu] = useState(false);
+  const [penColor, setPenColor] = useState(PEN_COLORS[0].id);
+  const [markerColor, setMarkerColor] = useState(MARKER_COLORS[0].id);
+  const [penWidth, setPenWidth] = useState(PEN_WIDTHS[1].id);
+  const drawTool = drawKind ? { kind: drawKind, color: drawKind === 'highlight' ? markerColor : penColor, width: penWidth } : null;
   const textStyle = useRef<Pick<TextBox, 'size' | 'family' | 'bold' | 'color'>>(loadTextStyle());
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [hist, setHist] = useState({ canUndo: false, canRedo: false });
@@ -133,6 +153,7 @@ export default function App() {
       setOverview(act === 'pages');
       setPlaced([]); setPlacing(null); setActivePlaced(null);
       setTexts([]); setAddingText(null); setActiveText(null);
+      setShapes([]); setActiveShape(null); setDrawKind(null);
       if (act === 'print') setPrintOpen(true);
       if (act === 'sign') setMarkDialog('sign');
       requestAnimationFrame(() => { viewer.current?.scrollTo(0, 0); fitWidth(r.pages!, true); });
@@ -162,7 +183,8 @@ export default function App() {
   /** 놓아 둔 서명·직인을 PDF에 고정한다 */
   const applyPlaced = useCallback(async () => {
     const boxes = texts.filter((t) => t.text.trim());
-    if (!placed.length && !boxes.length) { setTexts([]); setActiveText(null); setAddingText(null); return; }
+    if (!placed.length && !boxes.length && !shapes.length) { setTexts([]); setActiveText(null); setAddingText(null); return; }
+    const marks = shapes.map((sh) => ({ page: sh.page, kind: sh.kind, points: sh.points, color: hexRgb(sh.color), width: sh.width }));
     const items = placed.map((p) => ({ page: p.page, x: p.x, y: p.y, w: p.w, h: p.h, png: dataUrlBytes(p.src) }));
     const lines = boxes.flatMap((b) => {
       const base = baselineOffset(b.family, b.bold, b.size);
@@ -172,16 +194,17 @@ export default function App() {
       }));
     });
     const kinds = new Set(placed.map((p) => p.kind));
-    const what = [kinds.has('sign') && '서명', kinds.has('stamp') && '직인', boxes.length && '글자'].filter(Boolean).join('·');
+    const what = [kinds.has('sign') && '서명', kinds.has('stamp') && '직인', boxes.length && '글자', shapes.length && '그린 것'].filter(Boolean).join('·');
     setBusy('넣는 중…');
     try {
-      applyPages(await client.place(items, lines), { kind: 'mark', page: (placed[0] ?? boxes[0]).page });
+      applyPages(await client.place(items, lines, marks), { kind: 'mark', page: (placed[0] ?? boxes[0] ?? shapes[0]).page });
       setPlaced([]); setActivePlaced(null); setPlacing(null);
       setTexts([]); setActiveText(null); setAddingText(null);
+      setShapes([]); setActiveShape(null);
       say(`${what}을 넣었어요. 되돌리기로 뺄 수 있어요.`);
     } catch (e) { say(`넣지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
-  }, [placed, texts, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [placed, texts, shapes, client, say]); // eslint-disable-line react-hooks/exhaustive-deps
   const applyPlacedRef = useRef(applyPlaced);
   applyPlacedRef.current = applyPlaced;
 
@@ -200,8 +223,17 @@ export default function App() {
     say(copies.length ? `${copies.length + 1}쪽 모두 같은 자리에 놓았어요. 확인한 뒤 적용을 누르세요.` : '이미 모든 쪽에 놓여 있어요.');
   }, [doc, placed, say]);
 
+  /** 펜·형광펜·도형 그리기 시작/끝 (같은 도구를 다시 누르면 끝) */
+  const toggleDraw = useCallback((kind: ShapeKind | null) => {
+    setShapeMenu(false);
+    setActiveShape(null);
+    setDrawKind((k) => (k === kind ? null : kind));
+    if (kind) { setPlacing(null); setAddingText(null); setMode('view'); setOverview(false); }
+  }, []);
+
   /** 글자 넣을 곳 고르기 시작 (text: 날짜처럼 미리 정한 글자) */
   const startText = useCallback((text = '') => {
+    setDrawKind(null);
     setPlacing(null);
     setMode('view');
     setOverview(false);
@@ -215,6 +247,7 @@ export default function App() {
     setMode('view');
     setOverview(false);
     setPlacing(m);
+    setDrawKind(null); setAddingText(null);
     say(`${m.kind === 'sign' ? '서명' : '직인'}을 넣을 곳을 누르세요. Esc를 누르면 취소돼요.`);
   }, [say]);
 
@@ -464,8 +497,11 @@ export default function App() {
       else if (mod && k === 'p') { e.preventDefault(); if (doc) setPrintOpen(true); }
       else if ((e.target as HTMLElement).isContentEditable || (e.target as HTMLElement).tagName === 'INPUT' || document.querySelector('.modal')) return;
       else if (e.key === 'Escape' && addingText) { e.preventDefault(); setAddingText(null); }
+      else if (e.key === 'Escape' && drawKind) { e.preventDefault(); setDrawKind(null); }
+      else if (e.key === 'Escape' && activeShape) { e.preventDefault(); setActiveShape(null); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && activeShape) { e.preventDefault(); setShapes((l) => l.filter((x) => x.id !== activeShape)); setActiveShape(null); }
       else if (e.key === 'Escape' && (placing || activePlaced)) { e.preventDefault(); if (placing) setPlacing(null); else setActivePlaced(null); }
-      else if (e.key === 'Enter' && (placed.length || texts.length)) { e.preventDefault(); applyPlacedRef.current(); }
+      else if (e.key === 'Enter' && (placed.length || texts.length || shapes.length)) { e.preventDefault(); applyPlacedRef.current(); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && activePlaced) { e.preventDefault(); setPlaced((l) => l.filter((x) => x.id !== activePlaced)); setActivePlaced(null); }
       else if (!mod && k === 't' && doc && !overview) { e.preventDefault(); startText(); }
       else if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
@@ -499,7 +535,7 @@ export default function App() {
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onOver);
     };
-  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview]);
+  }, [doOpen, doSave, load, doc, undo, redo, mode, editing, goTo, cur, say, insertFiles, placing, activePlaced, placed.length, addingText, texts.length, startText, overview, drawKind, activeShape, shapes.length]);
 
   // 탐색기에서 PDF를 두 번 눌러 열거나, 이미 켜진 창에 파일을 보낼 때
   const loadRef = useRef(load);
@@ -590,7 +626,7 @@ export default function App() {
         )}
         {tab === 'edit' && (
           <div className="tools">
-            {tool('edit', '글자 고치기', () => { applyPlacedRef.current(); setPlacing(null); setAddingText(null); setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
+            {tool('edit', '글자 고치기', () => { applyPlacedRef.current(); setPlacing(null); setAddingText(null); setDrawKind(null); setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
             {tool('text', '글자 추가', () => (addingText && !addingText.text ? setAddingText(null) : startText()), { on: !!addingText && !addingText.text, title: '빈 곳에 글자 쓰기 (T)' })}
             <div className="dropwrap">
               {tool('calendar', '날짜', () => setDateMenu((v) => !v), { on: dateMenu || !!addingText?.text, title: '오늘 날짜 넣기' })}
@@ -604,9 +640,18 @@ export default function App() {
             </div>
             {tool('image', '그림')}
             <span className="vsep" aria-hidden="true" />
-            {tool('highlight', '형광펜')}
-            {tool('pen', '펜')}
-            {tool('shape', '도형')}
+            {tool('highlight', '형광펜', () => toggleDraw('highlight'), { on: drawKind === 'highlight', title: '끌어서 형광펜 칠하기' })}
+            {tool('pen', '펜', () => toggleDraw('pen'), { on: drawKind === 'pen', title: '자유롭게 그리기' })}
+            <div className="dropwrap">
+              {tool('shape', '도형·체크', () => setShapeMenu((v) => !v), { on: shapeMenu || (!!drawKind && SHAPE_KINDS.some((k) => k.id === drawKind)), title: '체크 표시, 네모, 동그라미, 선, 화살표' })}
+              {shapeMenu && (
+                <div className="dropmenu" role="menu" onMouseLeave={() => setShapeMenu(false)}>
+                  {SHAPE_KINDS.map((k) => (
+                    <button key={k.id} role="menuitem" onClick={() => toggleDraw(k.id)}><span className="dm-ico">{k.icon}</span>{k.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             <span className="vsep" aria-hidden="true" />
             {tool('sign', '서명', () => setMarkDialog('sign'), { title: '서명 그리기·불러오기' })}
             {tool('stamp', '직인', () => setMarkDialog('stamp'), { title: '직인 만들기·불러오기' })}
@@ -675,6 +720,19 @@ export default function App() {
               {doc.pages.map((p, i) => (
                 <div key={i} className="page">
                   <PageCanvas client={client} index={i} info={p} zoom={zoom} rev={rev} root={viewerEl} className="sheet" />
+                  {(drawKind || shapes.some((x) => x.page === i)) && (
+                    <ShapeLayer
+                      index={i} info={p} zoom={zoom}
+                      shapes={shapes.filter((x) => x.page === i)}
+                      activeId={activeShape}
+                      tool={drawTool}
+                      onAdd={(sh) => setShapes((l) => [...l, { ...sh, id: newId() }])}
+                      onSelect={setActiveShape}
+                      onChange={(id, patch) => setShapes((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)))}
+                      onRemove={(id) => { setShapes((l) => l.filter((x) => x.id !== id)); setActiveShape(null); }}
+                      onApply={() => applyPlacedRef.current()}
+                    />
+                  )}
                   {(placing || placed.some((x) => x.page === i)) && (
                     <PlaceLayer
                       index={i} info={p} zoom={zoom}
@@ -730,6 +788,29 @@ export default function App() {
               ))}
             </div>
           </div>
+          {drawKind && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              <span><b>{DRAW_LABEL[drawKind]}</b><span className="muted"> · {drawKind === 'check' ? '넣을 곳을 누르세요' : drawKind === 'pen' ? '끌어서 그리세요' : '끌어서 그리세요'}</span></span>
+              <span className="drawopts">
+                {(drawKind === 'highlight' ? MARKER_COLORS : PEN_COLORS).map((c) => (
+                  <button key={c.id} className={`mb-color${(drawKind === 'highlight' ? markerColor : penColor) === c.id ? ' on' : ''}`} aria-label={c.label} title={c.label} onClick={() => (drawKind === 'highlight' ? setMarkerColor(c.id) : setPenColor(c.id))}><span style={{ background: c.id }} /></button>
+                ))}
+                {drawKind !== 'highlight' && drawKind !== 'check' && PEN_WIDTHS.map((w) => (
+                  <button key={w.id} className={`wbtn${penWidth === w.id ? ' on' : ''}`} onClick={() => setPenWidth(w.id)}>{w.label}</button>
+                ))}
+              </span>
+              {shapes.length > 0 && <button className="ok" onClick={() => { setDrawKind(null); applyPlacedRef.current(); }}>적용</button>}
+              <button onClick={() => setDrawKind(null)}>끝내기</button>
+            </div>
+          )}
+          {!drawKind && !addingText && !placing && placed.length === 0 && texts.length === 0 && shapes.length > 0 && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              <span><b>그린 것 {shapes.length}개</b><span className="muted"> · 눌러서 고르면 색을 바꾸거나 뺄 수 있어요</span></span>
+              <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>
+            </div>
+          )}
           {addingText && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
@@ -737,14 +818,14 @@ export default function App() {
               <button onClick={() => setAddingText(null)}>취소</button>
             </div>
           )}
-          {!addingText && !placing && placed.length === 0 && texts.length > 0 && !overview && (
+          {!drawKind && !addingText && !placing && placed.length === 0 && texts.length > 0 && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               <span><b>글자 {texts.length}개</b><span className="muted"> · 왼쪽 위 손잡이로 옮기고, 다 쓰면 적용</span></span>
               <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>
             </div>
           )}
-          {(placing || placed.length > 0) && !overview && (
+          {!drawKind && (placing || placed.length > 0) && !overview && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               {placing
@@ -755,7 +836,7 @@ export default function App() {
                 : <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>}
             </div>
           )}
-          {mode === 'edit' && !overview && !placing && placed.length === 0 && texts.length === 0 && !addingText && (
+          {mode === 'edit' && !overview && !placing && placed.length === 0 && texts.length === 0 && !addingText && !drawKind && (
             <div className="statuspill" role="status">
               <span className="dot" aria-hidden="true" />
               <span><b>글자 고치는 중</b><span className="muted"> · 줄을 누르거나 글자 위를 끌어서 고르세요</span></span>

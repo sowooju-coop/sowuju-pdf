@@ -1,4 +1,4 @@
-import type { NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { NewShape, NewText, PageInfo, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 export interface EditResult { pages: PageInfo[]; canUndo: boolean; canRedo: boolean }
 
@@ -61,8 +61,8 @@ export class PdfClient {
   }
   duplicate(indices: number[]) { return this.call<EditResult>('duplicate', { indices }); }
   extract(indices: number[]) { return this.call<Uint8Array>('extract', { indices }); }
-  place(items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[], texts: NewText[] = []) {
-    return this.call<EditResult>('place', { items, texts }, items.map((i) => i.png.buffer));
+  place(items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[], texts: NewText[] = [], shapes: NewShape[] = []) {
+    return this.call<EditResult>('place', { items, texts, shapes }, items.map((i) => i.png.buffer));
   }
   lines(index: number) { return this.call<TextLine[]>('lines', { index }); }
   replace(req: ReplaceRequest) { return this.call<EditResult>('replace', req); }

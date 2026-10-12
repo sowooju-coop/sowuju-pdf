@@ -1,8 +1,9 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { NewShape, NewText, PageInfo, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replaceText } from './textEdit';
+import { drawShapes } from './shapes';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
 
 let doc: mupdf.PDFDocument | null = null;
@@ -206,9 +207,12 @@ const handlers: Record<string, (args: any) => any> = {
   duplicate: ({ indices }) => { remember(); duplicatePages(indices); return { pages: pageInfos(), ...history() }; },
   extract: ({ indices }) => extractPages(indices),
   // 서명·직인 그림과 새 글자를 한 번에 넣는다 (되돌리기 한 번에 모두 빠지게)
-  place: async ({ items, texts = [] }: { items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[]; texts?: NewText[] }) => {
+  place: async ({ items, texts = [], shapes = [] }: { items: { page: number; x: number; y: number; w: number; h: number; png: Uint8Array }[]; texts?: NewText[]; shapes?: NewShape[] }) => {
     remember();
+    // 형광펜은 맨 아래, 그다음 그림·글자, 펜·도형은 위에
+    drawShapes(requireDoc(), shapes.filter((s) => s.kind === 'highlight'));
     for (const it of items) placeImage(it.page, it.x, it.y, it.w, it.h, it.png);
+    drawShapes(requireDoc(), shapes.filter((s) => s.kind !== 'highlight'));
     await addTexts(requireDoc(), texts);
     return { pages: pageInfos(), ...history() };
   },

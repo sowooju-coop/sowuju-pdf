@@ -66,3 +66,13 @@ export interface NewText {
   fontFile: string;
   text: string;
 }
+
+/** 펜·형광펜·도형·체크 (점 좌표는 화면 좌표 pt) */
+export type ShapeKind = 'pen' | 'highlight' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'check';
+export interface NewShape {
+  page: number;
+  kind: ShapeKind;
+  points: [number, number][];
+  color: [number, number, number];
+  width: number;
+}

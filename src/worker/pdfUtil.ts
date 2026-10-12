@@ -5,7 +5,7 @@ export const applyMatrix = (m: mupdf.Matrix, x: number, y: number): [number, num
 export const num = (v: number) => (Math.abs(v) < 1e-6 ? '0' : String(+v.toFixed(4)));
 
 /** 페이지 Resources 안의 하위 사전(Font, XObject)에 새 이름으로 obj를 넣고 그 이름을 돌려준다 */
-export function addResource(doc: mupdf.PDFDocument, page: mupdf.PDFPage, kind: 'Font' | 'XObject', prefix: string, obj: mupdf.PDFObject) {
+export function addResource(doc: mupdf.PDFDocument, page: mupdf.PDFPage, kind: 'Font' | 'XObject' | 'ExtGState', prefix: string, obj: mupdf.PDFObject) {
   const pobj = page.getObject();
   let res = pobj.get('Resources');
   if (res.isNull()) {
