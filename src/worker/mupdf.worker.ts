@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // MuPDF는 무거운 작업이라 화면이 멈추지 않도록 별도 작업 스레드(Web Worker)에서 돌린다.
 import * as mupdf from 'mupdf';
-import type { SignPrepare, Bookmark, CleanOptions, CropOptions, ReplaceParaRequest, ResizeOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
+import type { MoveRequest, SignPrepare, Bookmark, CleanOptions, CropOptions, ReplaceParaRequest, ResizeOptions, FormField, NewField, NewShape, NewText, OcrWord, PageInfo, PageNumberOptions, WatermarkOptions, ReplaceRequest, WorkerRequest, WorkerResponse } from '../lib/protocol';
 import { addTexts, readLines, replacePara, replaceText } from './textEdit';
 import { drawShapes } from './shapes';
 import { origFont } from './origFont';
@@ -15,6 +15,7 @@ import { detectFields } from './formDetect';
 import { cleanPages, cleanPreview } from './scanClean';
 import { cropPages, resizePages } from './pageSize';
 import { hasSignatures, prepareSign } from './sign';
+import { movableImages, moveObjects } from './objMove';
 import { autoOutline, getOutline, pageTitle, setOutline } from './outline';
 import { clearDocInfo, encryptOptions, findPrivate, redactAreas, shrinkImages, type ShrinkLevel } from './protect';
 import { addResource, appendContent, rectToImageMatrix } from './pdfUtil';
@@ -340,6 +341,12 @@ const handlers: Record<string, (args: any) => any> = {
   },
   resizePages: async (o: ResizeOptions) => { await edit('쪽 크기', () => resizePages(requireDoc(), o)); return { ...history(), pages: pageInfos() }; },
   cropPages: async (o: CropOptions) => { await edit('여백 자르기', () => cropPages(requireDoc(), o)); return { ...history(), pages: pageInfos() }; },
+  movableImages: ({ index }: { index: number }) => movableImages(requireDoc(), index),
+  /** 쪽 안의 원래 글자·그림 옮기기 (되돌리기 한 번으로 돌아간다) */
+  moveObjects: async (req: MoveRequest) => {
+    await edit('옮기기', () => moveObjects(requireDoc(), req));
+    return { ...history() };
+  },
   signState: () => {
     const d = requireDoc();
     return { encrypted: !d.getTrailer().get('Encrypt').isNull(), signatures: hasSignatures(d), edited: d.canUndo() };

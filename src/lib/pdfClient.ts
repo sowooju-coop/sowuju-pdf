@@ -1,5 +1,5 @@
 import type { PrivacyHit } from './privacy';
-import type { SignPrepare, SignState, Bookmark, CleanOptions, CropOptions, ResizeOptions, ReplaceParaRequest, FormField, NewField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
+import type { MovableObject, MoveRequest, SignPrepare, SignState, Bookmark, CleanOptions, CropOptions, ResizeOptions, ReplaceParaRequest, FormField, NewField, OcrWord, OrigFontInfo, NewShape, NewText, PageInfo, PageNumberOptions, WatermarkOptions, RenderResult, ReplaceRequest, TextLine, WorkerRequest, WorkerResponse } from './protocol';
 
 /** pages 가 없으면 쪽 구성·크기는 그대로 */
 export interface EditResult { pages?: PageInfo[]; canUndo: boolean; canRedo: boolean }
@@ -153,6 +153,8 @@ export class PdfClient {
   findPrivate(rrnBackOnly: boolean, search: string[]) { return this.call<{ hits: PrivacyHit[]; noText: number[] }>('findPrivate', { rrnBackOnly, search }); }
   redact(areas: { page: number; rects: [number, number, number, number][] }[], clearInfo: boolean) { return this.call<EditResult>('redact', { areas, clearInfo }); }
   /** password 가 빈 문자열이면 암호를 푼 파일 */
+  movableImages(index: number) { return this.call<MovableObject[]>('movableImages', { index }); }
+  moveObjects(req: MoveRequest) { return this.call<EditResult>('moveObjects', req); }
   signState() { return this.call<SignState>('signState', {}); }
   prepareSign(o: SignPrepare) { return this.call<Uint8Array>('prepareSign', o); }
   saveProtected(password: string, printOnly: boolean) { return this.call<Uint8Array>('saveProtected', { password, printOnly }); }

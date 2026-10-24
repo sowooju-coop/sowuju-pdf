@@ -31,6 +31,8 @@ import { FindBar, FindLayer, type FindState } from './components/Find';
 import { CertSignDialog } from './components/CertSign';
 import type { SignCert } from './lib/sign/certs';
 import type { SignPrepare, SignState } from './lib/protocol';
+import { MoveLayer } from './components/MoveLayer';
+import type { MoveRequest } from './lib/protocol';
 import { LockDialog, PrivacyPanel, privacyAreas, RedactLayer, ShrinkDialog, type PrivacyState } from './components/Protect';
 import { MARKER_COLORS, PEN_COLORS, PEN_WIDTHS, ShapeLayer, type Shape } from './components/ShapeLayer';
 import type { ShapeKind } from './lib/protocol';
@@ -222,7 +224,7 @@ export function Workspace(props: WorkspaceProps) {
   const [penWidth, setPenWidth] = useState(PEN_WIDTHS[1].id);
   const drawTool = drawKind ? { kind: drawKind, color: drawKind === 'highlight' ? markerColor : penColor, width: penWidth } : null;
   const textStyle = useRef<Pick<TextBox, 'size' | 'family' | 'bold' | 'color'>>(loadTextStyle());
-  const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const [mode, setMode] = useState<'view' | 'edit' | 'move'>('view');
   const [hist, setHist] = useState({ canUndo: false, canRedo: false });
   const [log, setLog] = useState<{ done: HistItem[]; undone: HistItem[] }>({ done: [], undone: [] });
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -459,6 +461,14 @@ export function Workspace(props: WorkspaceProps) {
     } catch (e) { throw new Error(`서명하지 못했어요. ${(e as Error).message}`); }
     finally { setBusy(null); }
   }, [client, doc, say]);
+
+  /** 쪽 안의 원래 글자·그림 옮기기 */
+  const moveObj = useCallback(async (req: MoveRequest) => {
+    try {
+      applyPages(await client.moveObjects(req), { kind: 'mark', page: req.page }, [req.page]);
+      return true;
+    } catch (e) { say(`옮기지 못했어요. ${(e as Error).message}`); return false; }
+  }, [client, say]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 그림 파일을 골라 쪽에 놓기 (서명·직인과 같은 방식으로 옮기고 크기를 바꾼다) */
   const pickImageFile = useCallback(() => {
@@ -1007,7 +1017,7 @@ export function Workspace(props: WorkspaceProps) {
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
   }, [active, textSel, say]);
-  const selecting = mode !== 'edit' && !privacy && !drawKind && !placing && !addingText && !placed.length && !texts.length && !shapes.length && !fieldTool;
+  const selecting = mode === 'view' && !privacy && !drawKind && !placing && !addingText && !placed.length && !texts.length && !shapes.length && !fieldTool;
 
   /** 쪽 안의 높이(y)까지 맞춰 이동 (목차) */
   const goToY = useCallback((i: number, y?: number) => {
@@ -1076,7 +1086,7 @@ export function Workspace(props: WorkspaceProps) {
       else if (!mod && k === 'e' && doc) { setTab('edit'); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }
       else if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom((z) => clamp(z * 1.2, 0.25, 4)); }
       else if (mod && e.key === '-') { e.preventDefault(); setZoom((z) => clamp(z / 1.2, 0.25, 4)); }
-      else if (e.key === 'Escape') { setPrintOpen(false); if (mode === 'edit' && !editing) setMode('view'); }
+      else if (e.key === 'Escape') { setPrintOpen(false); if ((mode === 'edit' && !editing) || mode === 'move') setMode('view'); }
       else if (doc && (e.key === 'PageDown' || (e.key === 'ArrowRight' && !mod))) { goTo(cur + 1); }
       else if (doc && (e.key === 'PageUp' || (e.key === 'ArrowLeft' && !mod))) { goTo(cur - 1); }
     };
@@ -1174,7 +1184,7 @@ export function Workspace(props: WorkspaceProps) {
           <button className="iconbtn" aria-label="실행 취소" title="실행 취소 (Ctrl+Z)" onClick={undo} disabled={!hist.canUndo}><Icon name="undo" size={19} /></button>
           <button className="iconbtn" aria-label="다시 실행" title="다시 실행 (Ctrl+Shift+Z)" onClick={redo} disabled={!hist.canRedo}><Icon name="redo" size={19} /></button>
           <span className="vsep" aria-hidden="true" />
-          <button className="iconbtn helpbtn" aria-label="도움말" title="도움말 (F1)" onClick={() => props.onHelp(privacy ? 'privacy' : mode === 'edit' ? 'edit' : drawKind ? 'draw' : addingText ? (addingText.note ? 'memo' : 'text') : placing ? (placing.kind === 'stamp' ? 'stamp' : 'sign') : overview ? 'pages' : fieldCount ? 'form' : undefined)}><Icon name="help" size={19} /><span>도움말</span></button>
+          <button className="iconbtn helpbtn" aria-label="도움말" title="도움말 (F1)" onClick={() => props.onHelp(privacy ? 'privacy' : mode === 'edit' ? 'edit' : mode === 'move' ? 'move' : drawKind ? 'draw' : addingText ? (addingText.note ? 'memo' : 'text') : placing ? (placing.kind === 'stamp' ? 'stamp' : 'sign') : overview ? 'pages' : fieldCount ? 'form' : undefined)}><Icon name="help" size={19} /><span>도움말</span></button>
           <span className="vsep" aria-hidden="true" />
           <button className="btn" onClick={() => setPrintOpen(true)} title="인쇄 (Ctrl+P)"><Icon name="print" size={17} />인쇄</button>
           <button className="btn navy" onClick={doSave} title="저장 (Ctrl+S)">저장</button>
@@ -1206,6 +1216,7 @@ export function Workspace(props: WorkspaceProps) {
         {tab === 'edit' && (
           <div className="tools">
             {tool('edit', '글자 고치기', () => { applyPlacedRef.current(); setPlacing(null); setAddingText(null); setDrawKind(null); setOverview(false); setMode((m) => (m === 'edit' ? 'view' : 'edit')); }, { on: mode === 'edit', title: '글자 고치기 (E)' })}
+            {tool('move', '옮기기', () => { applyPlacedRef.current(); setPlacing(null); setAddingText(null); setDrawKind(null); setOverview(false); setMode((m) => (m === 'move' ? 'view' : 'move')); }, { on: mode === 'move', title: '원래 글자 줄·그림을 끌어서 옮기기, 그림 크기 바꾸기' })}
             {tool('text', '글자 추가', () => (addingText && !addingText.text ? setAddingText(null) : startText()), { on: !!addingText && !addingText.text, title: '빈 곳에 글자 쓰기 (T)' })}
             <div className="dropwrap">
               {tool('calendar', '날짜', () => setDateMenu((v) => !v), { on: dateMenu || !!addingText?.text, title: '오늘 날짜 넣기' })}
@@ -1417,6 +1428,9 @@ export function Workspace(props: WorkspaceProps) {
                       onApply={() => applyPlacedRef.current()}
                     />
                   )}
+                  {mode === 'move' && (
+                    <MoveLayer client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)} onMove={moveObj} />
+                  )}
                   {mode === 'edit' && (
                     <EditLayer
                       client={client} index={i} info={p} zoom={zoom} rev={rev * 10000 + (pageRev[i] ?? 0)}
@@ -1510,6 +1524,13 @@ export function Workspace(props: WorkspaceProps) {
               {placing
                 ? <button onClick={() => setPlacing(null)}>취소</button>
                 : <button className="ok" onClick={() => applyPlacedRef.current()}>적용</button>}
+            </div>
+          )}
+          {mode === 'move' && !overview && (
+            <div className="statuspill" role="status">
+              <span className="dot" aria-hidden="true" />
+              <span><b>옮기는 중</b><span className="muted"> · 글자 줄이나 그림을 눌러 끌어 놓으세요. 여러 줄은 빈 곳에서 끌어 고르고, 그림은 모서리로 크기를 바꿔요</span></span>
+              <button onClick={() => setMode('view')}>끝내기</button>
             </div>
           )}
           {mode === 'edit' && !overview && !placing && placed.length === 0 && texts.length === 0 && !addingText && !drawKind && (

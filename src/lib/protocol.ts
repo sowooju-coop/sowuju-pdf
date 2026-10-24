@@ -180,3 +180,8 @@ export interface SignPrepare {
 export interface SignState { encrypted: boolean; signatures: number; edited: boolean }
 /** 서명 값이 들어갈 자리 (바이트). 인증서 사슬이 길어도 넉넉하게 */
 export const SIG_SPACE = 16384;
+
+/** 옮길 수 있는 쪽 안의 그림 (화면 좌표 x0, y0, x1, y1) */
+export interface MovableObject { kind: 'image'; rect: [number, number, number, number] }
+/** 쪽 안의 원래 글자·그림 옮기기. rect는 고른 자리, to는 옮길 자리 (화면 좌표 x0, y0, x1, y1). 크기가 다르면 늘리거나 줄인다 */
+export interface MoveRequest { page: number; kind: 'image' | 'text'; rect: [number, number, number, number]; to: [number, number, number, number] }
